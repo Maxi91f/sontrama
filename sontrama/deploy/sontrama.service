@@ -1,0 +1,26 @@
+[Unit]
+Description=Sontrama Live MIDI studio
+After=network.target sound.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+SupplementaryGroups=audio
+WorkingDirectory=/home/pi/sontrama
+EnvironmentFile=-/etc/sontrama.env
+Environment=PYTHONUNBUFFERED=1
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+ExecStart=/home/pi/sontrama/.venv/bin/sontrama
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/pi/sontrama/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

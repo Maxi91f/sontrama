@@ -1,0 +1,38 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-json
+      - id: check-yaml
+      - id: check-toml
+      - id: check-symlinks
+      - id: detect-private-key
+      - id: detect-aws-credentials
+        args: [--allow-missing-credentials]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: local
+    hooks:
+      - id: ruff
+        name: Ruff (project lockfile)
+        entry: ./task/hooks/ruff.sh check --fix
+        language: system
+        files: ^sontrama/.*\.py$
+      - id: ruff-format
+        name: Ruff format (project lockfile)
+        entry: ./task/hooks/ruff.sh format
+        language: system
+        files: ^sontrama/.*\.py$
+      - id: eslint
+        name: ESLint (project lockfile)
+        entry: ./task/hooks/eslint.sh
+        language: system
+        files: ^sontrama/.*\.(ts|mjs)$
+      - id: prettier
+        name: Prettier (project lockfile)
+        entry: sontrama/node_modules/.bin/prettier --write
+        language: system
+        types_or: [javascript, ts, css, html, json, yaml, markdown]

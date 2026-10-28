@@ -1,0 +1,13 @@
+fluidsynthui/
+fluidsynth/
+fluidsinth/
+experiments/
+backups/
+**/node_modules/
+**/.venv/
+**/dist/
+sontrama/data/
+sontrama/public/vendor/
+sontrama/package-lock.json
+sontrama/test-results/
+sontrama/playwright-report/

@@ -1,0 +1,36 @@
+{
+  "name": "sontrama-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && node scripts/vendor.mjs && vite build",
+    "check": "tsc --noEmit",
+    "lint": "eslint web/src tests/browser scripts *.ts *.mjs --max-warnings 0",
+    "lint:fix": "npm run lint -- --fix",
+    "format": "prettier --write --ignore-path ../.prettierignore web tests/browser scripts *.ts *.mjs *.json README.md",
+    "format:check": "prettier --check --ignore-path ../.prettierignore web tests/browser scripts *.ts *.mjs *.json README.md",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "js-synthesizer": "1.13.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.0",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^7.3.1"
+  },
+  "engines": {
+    "node": "^22.13.0 || >=24"
+  },
+  "license": "MIT"
+}

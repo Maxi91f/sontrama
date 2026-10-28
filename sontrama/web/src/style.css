@@ -1,0 +1,660 @@
+:root {
+  color-scheme: light;
+  --primary: #ffea00;
+  --toolbar: #fff168;
+  --workspace: #fff5cc;
+  --surface: #fffef5;
+  --ink: #000;
+  --muted: #494638;
+  --success: #12643d;
+  font-family:
+    "Inter Variable",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: var(--ink);
+  background: #fff;
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  padding: clamp(12px, 3vw, 32px);
+  font-size: 15px;
+  line-height: 1.5;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button,
+select {
+  max-width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 3px solid var(--ink);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  font-weight: 600;
+}
+button {
+  cursor: pointer;
+  transition:
+    transform 0.08s,
+    box-shadow 0.08s;
+}
+button:hover:not(:disabled) {
+  background: var(--toolbar);
+}
+button:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+button[aria-pressed="true"] {
+  background: var(--primary);
+}
+button:disabled,
+select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+:focus-visible {
+  outline: 3px solid #a63a19;
+  outline-offset: 4px;
+}
+input[type="range"] {
+  accent-color: var(--ink);
+}
+input[type="range"] {
+  width: 100%;
+  margin: 14px 0 0;
+  display: block;
+}
+[hidden] {
+  display: none !important;
+}
+.studio {
+  max-width: 1120px;
+  margin: 16px auto;
+  border: 3px solid var(--ink);
+  box-shadow: 8px 8px 0 var(--ink);
+  background: var(--surface);
+  container-type: inline-size;
+}
+.studio-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 28px;
+  border-bottom: 3px solid var(--ink);
+}
+h1 {
+  font-size: 25px;
+  line-height: 1.3;
+  font-weight: 800;
+  letter-spacing: -1px;
+  margin: 0;
+}
+h2 {
+  font-size: 21px;
+  line-height: 1.3;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0 0 20px;
+}
+h3 {
+  font-size: 21px;
+  margin: 0;
+  font-weight: 800;
+}
+.live-tag {
+  font:
+    600 13px/1.5 "JetBrains Mono Variable",
+    monospace;
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  background: var(--primary);
+  padding: 3px 8px;
+}
+#connection {
+  margin-left: auto;
+  font:
+    12px/1.5 "JetBrains Mono Variable",
+    monospace;
+}
+#connection.connected {
+  color: var(--success);
+}
+.studio-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 28px;
+  border-bottom: 3px solid var(--ink);
+  background: var(--toolbar);
+}
+.studio-tabs button {
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-size: 12px;
+  padding: 10px 16px;
+}
+.studio-tabs button[aria-selected="true"] {
+  background: var(--primary);
+  font-weight: 800;
+}
+.workspace {
+  background: var(--workspace);
+}
+.pane {
+  padding: 28px;
+}
+.block,
+.effect {
+  padding: 24px;
+  background: var(--surface);
+  border: 3px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  min-width: 0;
+}
+.instrument-block {
+  display: block;
+}
+.instrument-field {
+  max-width: 480px;
+}
+.instrument-options {
+  min-width: 0;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 3px solid var(--ink);
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+  min-width: 0;
+}
+.field select {
+  display: block;
+  width: 100%;
+  font-size: 15px;
+}
+.instrument-field select,
+.preset-field select {
+  font-size: 21px;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+.instrument-select {
+  background: var(--toolbar);
+}
+.preset-field select {
+  font-size: 17px;
+  min-height: 53px;
+}
+.bank-field {
+  grid-column: 1 / -1;
+  margin-top: 20px;
+  max-width: 320px;
+}
+.bank-field select {
+  font-weight: 400;
+}
+.muted {
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.route {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font:
+    13px/1.5 "JetBrains Mono Variable",
+    monospace;
+}
+.instrument-block .route {
+  grid-column: 1 / -1;
+  border-top: 3px solid var(--ink);
+  padding-top: 20px;
+  margin: 24px 0 0;
+}
+.route-chip {
+  padding: 4px 8px;
+  border: 2px solid var(--ink);
+  background: var(--primary);
+}
+.instrument-controls {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  margin-top: 20px;
+}
+.instrument-controls .field {
+  min-width: 120px;
+  align-items: flex-start;
+}
+.instrument-controls select {
+  width: auto;
+}
+.source {
+  padding: 16px 0;
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: 20px;
+}
+.source:first-child {
+  padding-top: 0;
+}
+.source p {
+  margin: 8px 0;
+}
+.source + .field {
+  max-width: 300px;
+}
+.panel-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.effect {
+  margin: 0 0 20px;
+  padding: 16px;
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.effect-top {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.effect-top button {
+  padding: 3px 8px;
+  min-width: 36px;
+}
+.bypassed .range-label {
+  opacity: 0.5;
+}
+.range-label {
+  display: block;
+  margin-top: 20px;
+  font-size: 13px;
+}
+.range-label output {
+  float: right;
+  font-weight: 600;
+}
+.add-effect {
+  margin-top: 24px;
+  max-width: 320px;
+}
+.mixer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.strip-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.strip-head span {
+  font-size: 13px;
+}
+.strip-controls {
+  display: flex;
+  gap: 12px;
+  margin: 16px 0;
+}
+.meter {
+  height: 10px;
+  border: 2px solid var(--ink);
+  background: var(--workspace);
+  margin: 20px 0;
+}
+.meter span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--primary);
+}
+.solo-hint {
+  min-height: 43px;
+}
+.signal-path {
+  font:
+    13px/1.7 "JetBrains Mono Variable",
+    monospace;
+  border-left: 4px solid var(--ink);
+  padding-left: 16px;
+  margin-top: 24px;
+  overflow-wrap: anywhere;
+}
+#notice {
+  padding: 16px 28px;
+  background: #ffe0dd;
+  border-bottom: 3px solid var(--ink);
+  color: #721b15;
+  overflow-wrap: anywhere;
+}
+.keyboard-drawer {
+  border-top: 3px solid var(--ink);
+}
+.keyboard-drawer > summary {
+  padding: 16px 28px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.keyboard-pane {
+  padding: 8px 28px 20px;
+}
+.keyboard-head {
+  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.piano {
+  --piano-columns: 20;
+  display: flex;
+  position: relative;
+  height: 140px;
+  touch-action: none;
+  user-select: none;
+}
+.piano button {
+  box-shadow: none;
+  transition: none;
+  padding: 0;
+}
+.piano button:active {
+  transform: none;
+}
+.piano .white {
+  flex: 1;
+  min-width: 0;
+  height: 140px;
+  position: relative;
+  background: var(--surface);
+  border: 2px solid var(--ink);
+}
+.piano .black {
+  position: absolute;
+  top: 0;
+  width: calc(100% / var(--piano-columns) * 0.62);
+  height: 88px;
+  z-index: 1;
+  background: var(--ink);
+  color: var(--surface);
+  border: 2px solid var(--ink);
+}
+.piano button span {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 400;
+}
+.piano button.held,
+.piano button:hover {
+  background: var(--primary);
+  color: var(--ink);
+}
+@container (max-width:640px) {
+  .studio-header,
+  .pane {
+    padding: 24px;
+  }
+  #connection {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+  .studio-tabs {
+    gap: 8px;
+    padding: 16px;
+  }
+  .studio-tabs button {
+    padding: 10px 8px;
+    flex: 1;
+  }
+  .instrument-block {
+    display: block;
+    padding: 20px;
+  }
+  .piano {
+    --piano-columns: 7;
+  }
+  .piano .upper {
+    display: none;
+  }
+  .keyboard-pane {
+    padding-inline: 24px;
+  }
+  .keyboard-drawer > summary {
+    padding-inline: 24px;
+  }
+}
+@container (max-width:400px) {
+  .studio-header {
+    padding: 24px 16px;
+    gap: 12px;
+  }
+  .studio-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 16px 12px;
+    gap: 10px;
+  }
+  .studio-tabs button {
+    padding: 10px 6px;
+    min-height: 44px;
+  }
+  .studio-tabs button:last-child {
+    grid-column: 1 / -1;
+  }
+  .pane {
+    padding: 24px 16px;
+  }
+  .block {
+    padding: 16px;
+  }
+  .mixer {
+    grid-template-columns: 1fr;
+  }
+  .effect {
+    padding: 12px;
+  }
+  .effect-top {
+    flex-wrap: wrap;
+  }
+  .effect-top button[data-fx-enabled] {
+    flex-basis: 100%;
+  }
+  .effect-top button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .keyboard-head {
+    align-items: flex-start;
+  }
+  .keyboard-head button {
+    width: 100%;
+  }
+  .keyboard-head label {
+    align-items: flex-start;
+  }
+  .keyboard-pane {
+    padding: 8px 12px 24px;
+  }
+  .keyboard-drawer > summary {
+    padding-inline: 16px;
+  }
+  .instrument-controls {
+    gap: 20px;
+  }
+}
+@media (pointer: coarse) {
+  button,
+  select {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+}
+
+.output-sections {
+  display: grid;
+  gap: 24px;
+}
+#browser-preview {
+  min-height: 44px;
+  font-weight: 700;
+}
+
+/* One toggle treatment for MIDI, effects, sustain, mixer, capture and preview. */
+button[aria-pressed] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 700;
+}
+button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--primary);
+}
+.effect-top button[data-fx-enabled] {
+  margin-right: auto;
+  padding: 8px 12px;
+}
+
+.three-osc-panel {
+  min-width: 0;
+}
+.oscillators {
+  display: grid;
+  gap: 20px;
+}
+.oscillator {
+  border: 3px solid var(--ink);
+  padding: 16px;
+  background: var(--workspace);
+}
+.oscillator-heading {
+  --osc-button-size: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+.oscillator-heading > button {
+  height: var(--osc-button-size);
+  padding-block: 0;
+}
+.oscillator-heading .waveform-picker {
+  flex: 1;
+  min-width: 180px;
+}
+.oscillator-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 24px;
+}
+.oscillator-mix-note {
+  align-self: end;
+  margin-bottom: 0;
+}
+.osc-global {
+  border-top: 3px solid var(--ink);
+  margin-top: 24px;
+  padding-top: 20px;
+}
+.envelope-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+}
+.osc-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 24px;
+}
+@container (max-width:640px) {
+  .oscillator-controls,
+  .envelope-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container (max-width:400px) {
+  .oscillator {
+    padding: 12px;
+  }
+  .oscillator-heading .waveform-picker {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+  .oscillator-controls,
+  .envelope-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+.waveform-picker {
+  min-width: 0;
+}
+.waveform-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+button.waveform-button {
+  flex: 0 0 var(--osc-button-size);
+  width: var(--osc-button-size);
+  min-width: var(--osc-button-size);
+  height: var(--osc-button-size);
+  padding: 4px;
+  aspect-ratio: 1;
+}
+.waveform-button svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+.waveform-button path {
+  vector-effect: non-scaling-stroke;
+}
+.waveform-axis {
+  opacity: 0.2;
+  stroke-width: 1;
+}
+@container (max-width:840px) {
+  .oscillator-heading .waveform-picker {
+    flex-basis: 100%;
+    order: 3;
+  }
+}

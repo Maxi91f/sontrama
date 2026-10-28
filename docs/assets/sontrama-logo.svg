@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="180" viewBox="0 0 660 180" role="img" aria-labelledby="title desc">
+  <title id="title">Sontrama</title>
+  <desc id="desc">A woven signal mark and the Sontrama wordmark in black on warm cream, with a yellow accent.</desc>
+  <path fill="#fffef5" d="M0 0h660v180H0z"/>
+  <path fill="#000" d="M25 29h128v128H25z"/>
+  <path fill="#ffea00" stroke="#000" stroke-width="4" d="M17 21h128v128H17z"/>
+  <g fill="none" stroke="#000" stroke-width="7" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M40 61h24V43h34v36h24"/>
+    <path d="M40 87h24v18h34V69h24"/>
+    <path d="M40 113h24v18h34V95h24"/>
+  </g>
+  <text x="180" y="106" fill="#000" font-family="Inter, Arial, Helvetica, sans-serif" font-size="78" font-weight="900" letter-spacing="-4">SONTRAMA</text>
+  <path fill="#ffea00" d="M184 122h420v8H184z"/>
+</svg>
