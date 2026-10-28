@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 for (const fallback of [false, true]) {
   test(`3 Osc sounds without SoundFonts, edits live and swaps engines (${fallback ? "fallback" : "worklet"})`, async ({

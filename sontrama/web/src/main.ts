@@ -6,6 +6,13 @@ import { threeOscPanel } from "./three-osc-panel";
 import { waveforms } from "./waveform-picker";
 import { preferences, savePreferences } from "./preferences";
 import {
+  initializeSettings,
+  settingsIcon,
+  settingsView,
+  sharedSettings,
+  type SettingsController,
+} from "./settings";
+import {
   effectInfo,
   type EffectKind,
   type Session,
@@ -26,12 +33,14 @@ let socket: WebSocket | null = null;
 let reconnect: ReturnType<typeof setTimeout> | undefined;
 let connected = false;
 let previewEnabled = false;
-let capturing = preferences.captureKeyboard;
-let previewRestored = false;
+let capturing = false;
+let settingsOpen = false;
+let settingsController: SettingsController | null = null;
 let selectedTab = preferences.tab;
 let midiAccess: MIDIAccess | null = null;
 let starting = false;
 let mutation = Promise.resolve();
+let lastServerError = "";
 const held = new Map<string, { note: number }>();
 const incomingNotes = new Set<number>();
 const escape = (value: unknown) =>
@@ -48,7 +57,8 @@ const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
 
 app.innerHTML = `
   <main class="studio">
-    <header class="studio-header"><h1>Sontrama</h1><span class="live-tag">LIVE</span><span id="connection" role="status">Conectando…</span></header>
+    <header class="studio-header"><h1>Sontrama</h1><span class="live-tag">LIVE</span><div class="header-actions"><span id="connection" role="status">Conectando…</span><button type="button" id="open-settings" class="settings-trigger" aria-label="Configuración" title="Configuración" aria-controls="settings-view" aria-expanded="false">${settingsIcon}</button></div></header>
+    <div id="live-view">
     <nav class="studio-tabs" role="tablist" aria-label="Secciones de Live">${tabs.map(([key, name]) => `<button type="button" id="tab-${key}" role="tab" aria-controls="panel-${key}" data-tab="${key}" aria-selected="false">${name}</button>`).join("")}</nav>
     <div id="notice" role="alert" hidden></div>
     <div class="workspace">${tabs.map(([key]) => `<section id="panel-${key}" class="pane" role="tabpanel" aria-labelledby="tab-${key}" hidden></section>`).join("")}</div>
@@ -56,6 +66,8 @@ app.innerHTML = `
       <div class="keyboard-head"><button id="capture-keyboard" type="button" aria-pressed="false">Capturar teclado</button></div>
       <div class="piano" aria-label="Teclado de Do4 a La6"></div>
     </section></details>
+    </div>
+    ${settingsView()}
   </main>`;
 
 function notice(message = "") {
@@ -155,12 +167,19 @@ function render() {
       (state.effects.some((effect) => effect.enabled) ? " → " : "")
     }Canal 01 → Master → Salida del servidor</div><p class="muted">Motor: ${escape(snapshot.status.engine)} · Audio: ${escape(snapshot.status.audio)}</p><p class="muted">Cortes de audio detectados: <span id="underruns">${snapshot.status.underruns}</span></p></section><section class="block"><h3>Preview en navegador</h3><p class="muted">Escuchá una copia del audio acá, sin cambiar la salida principal.</p><button type="button" id="browser-preview" data-action="preview" aria-pressed="${previewEnabled}">Activar preview</button></section></div>`;
   syncPreviewButton();
-  if (snapshot.status.errors.length) notice(snapshot.status.errors.join(" · "));
+  const serverError = snapshot.status.errors.join(" · ");
+  if (serverError) notice(serverError);
+  else if (lastServerError && $("#notice").textContent === lastServerError)
+    notice();
+  lastServerError = serverError;
   bindControls();
 }
 
 function accept(state: Snapshot) {
   const previous = snapshot?.session;
+  const reloadFont =
+    snapshot?.status.catalog_revision !== undefined &&
+    snapshot.status.catalog_revision !== state.status.catalog_revision;
   snapshot = state;
   if (
     previous &&
@@ -171,11 +190,8 @@ function accept(state: Snapshot) {
   )
     releaseAll();
   render();
-  if (audio.context && !starting) void audio.apply(state.session).catch(fail);
-  if (!previewRestored) {
-    previewRestored = true;
-    if (preferences.previewEnabled) void setPreview(true, true);
-  }
+  if (audio.context && !starting)
+    void audio.apply(state.session, reloadFont).catch(fail);
 }
 
 function patch(
@@ -224,13 +240,19 @@ function syncPreviewButton() {
         : "Preview activado"
       : "Activar preview";
 }
-async function setPreview(enabled: boolean, automatic = false) {
+async function setPreview(enabled: boolean, automatic = false, persist = true) {
   if (!snapshot || starting) return;
   starting = true;
+  let applied = false;
   syncPreviewButton();
   try {
     if (enabled) {
+      const revision = snapshot.status.catalog_revision;
       await audio.start(snapshot.session, automatic);
+      await audio.apply(
+        snapshot.session,
+        revision !== snapshot.status.catalog_revision,
+      );
       previewEnabled = true;
       audio.context?.addEventListener("statechange", syncPreviewButton);
       notice();
@@ -238,12 +260,16 @@ async function setPreview(enabled: boolean, automatic = false) {
       previewEnabled = false;
       await audio.stop();
     }
-    savePreferences({ previewEnabled: enabled });
+    if (persist) await settingsController?.update({ browser_preview: enabled });
+    applied = true;
   } catch (error) {
+    applied = persist;
     fail(error);
   } finally {
     starting = false;
     syncPreviewButton();
+    if (applied && sharedSettings.browser_preview !== previewEnabled)
+      void setPreview(sharedSettings.browser_preview, true, false);
   }
 }
 async function togglePreview() {
@@ -263,7 +289,7 @@ async function togglePreview() {
 // on the next local gesture without changing the user's saved preference.
 function resumeRememberedPreview(event: Event) {
   if ((event.target as Element)?.closest?.("#browser-preview")) return;
-  if (preferences.previewEnabled && audio.context?.state === "suspended")
+  if (sharedSettings.browser_preview && audio.context?.state === "suspended")
     void audio.context.resume().catch(fail);
 }
 window.addEventListener("pointerdown", resumeRememberedPreview, {
@@ -457,9 +483,9 @@ app.addEventListener("keydown", (event) => {
   );
 });
 
-function send(data: number[]) {
+function send(data: number[], controller?: string) {
   if (socket?.readyState === WebSocket.OPEN)
-    socket.send(JSON.stringify({ type: "midi", data }));
+    socket.send(JSON.stringify({ type: "midi", data, controller }));
   else notice("Sin conexión con el servidor.");
 }
 function updateHeld() {
@@ -488,7 +514,7 @@ function noteOn(id: string, note: number) {
   const duplicate = [...held.values()].some((item) => item.note === note);
   held.set(id, { note });
   if (!duplicate) {
-    send([0x90, note, 100]);
+    send([0x90, note, sharedSettings.keyboard.velocity]);
   }
   updateHeld();
 }
@@ -594,7 +620,7 @@ function addKey(note: number, className: string, left?: number) {
   button.dataset.note = String(note);
   const name = `${noteNames[note % 12]}${Math.floor(note / 12) - 1}`;
   button.setAttribute("aria-label", name);
-  button.innerHTML = `<span>${note % 12 === 0 ? name + " · " : ""}${labels[note] ?? ""}</span>`;
+  button.innerHTML = `<span></span>`;
   if (left !== undefined)
     button.style.left = `calc(100% / var(--piano-columns) * ${left})`;
   button.addEventListener("pointerdown", (event) => {
@@ -624,12 +650,20 @@ function addKey(note: number, className: string, left?: number) {
 $("#capture-keyboard").addEventListener("click", () => {
   releaseAll();
   capturing = !capturing;
-  savePreferences({ captureKeyboard: capturing });
   syncKeyboardButton();
+  void settingsController
+    ?.update({ keyboard: { capture: capturing } })
+    .catch((error) => {
+      capturing = sharedSettings.keyboard.capture;
+      if (capturing) $<HTMLDetailsElement>(".keyboard-drawer").open = true;
+      syncKeyboardButton();
+      fail(error);
+    });
 });
 window.addEventListener("keydown", (event) => {
   if (
     !capturing ||
+    settingsOpen ||
     event.ctrlKey ||
     event.altKey ||
     event.metaKey ||
@@ -656,8 +690,15 @@ $(".keyboard-drawer").addEventListener("toggle", () => {
   if (!$<HTMLDetailsElement>(".keyboard-drawer").open) {
     releaseAll();
     capturing = false;
-    savePreferences({ captureKeyboard: false });
     syncKeyboardButton();
+    void settingsController
+      ?.update({ keyboard: { capture: false } })
+      .catch((error) => {
+        capturing = sharedSettings.keyboard.capture;
+        if (capturing) $<HTMLDetailsElement>(".keyboard-drawer").open = true;
+        syncKeyboardButton();
+        fail(error);
+      });
   }
 });
 
@@ -675,7 +716,7 @@ async function connectMidi() {
         input.onmidimessage = (event) => {
           if (!event.data || event.data[0] >= 0xf0) return;
           const data = [...event.data];
-          send(data);
+          send(data, input.name || input.id);
         };
       releaseAll();
       const label = app.querySelector("#browser-midi-status");
@@ -684,6 +725,7 @@ async function connectMidi() {
           [...midiAccess!.inputs.values()]
             .map((input) => input.name)
             .join(" · ") || "Sin dispositivos";
+      reportMidiDevices();
     };
     midiAccess.onstatechange = wire;
     wire();
@@ -702,10 +744,12 @@ function connect() {
     $("#connection").textContent = "Conectado";
     $("#connection").className = "connected";
     notice();
+    reportMidiDevices();
   };
   socket.onmessage = (event) => {
     const message = JSON.parse(event.data);
     if (message.type === "state") accept(message);
+    else if (message.type === "settings") settingsController?.accept(message);
     else if (message.type === "midi") {
       highlightMidi(message.data);
       if (previewEnabled) audio.midi(message.data, false);
@@ -763,6 +807,58 @@ function browserMeters() {
   }
   setTimeout(browserMeters, 80);
 }
+function reportMidiDevices() {
+  if (socket?.readyState === WebSocket.OPEN && midiAccess)
+    socket.send(
+      JSON.stringify({
+        type: "midi_devices",
+        names: [...midiAccess.inputs.values()]
+          .filter((input) => input.state === "connected")
+          .map((input) => input.name || input.id),
+      }),
+    );
+}
+function updateKeyboardLabels() {
+  const mode = sharedSettings.keyboard.labels;
+  app.querySelectorAll<HTMLButtonElement>("[data-note]").forEach((button) => {
+    const note = Number(button.dataset.note);
+    const name = `${noteNames[note % 12]}${Math.floor(note / 12) - 1}`;
+    const text =
+      mode === "none"
+        ? ""
+        : mode === "notes"
+          ? name
+          : mode === "both"
+            ? `${name}${labels[note] ? " · " + labels[note] : ""}`
+            : `${note % 12 === 0 ? name + " · " : ""}${labels[note] ?? ""}`;
+    button.querySelector("span")!.textContent = text;
+  });
+}
+settingsController = initializeSettings(
+  app,
+  (open) => {
+    if (open && !settingsOpen) for (const id of [...held.keys()]) noteOff(id);
+    settingsOpen = open;
+    $("#live-view").hidden = open;
+  },
+  (configuration) => {
+    document.documentElement.lang = configuration.interface.language;
+    document.documentElement.dataset.motion = configuration.interface.motion;
+    if (capturing && !configuration.keyboard.capture)
+      for (const id of [...held.keys()]) noteOff(id);
+    capturing = configuration.keyboard.capture;
+    if (capturing) $<HTMLDetailsElement>(".keyboard-drawer").open = true;
+    syncKeyboardButton();
+    updateKeyboardLabels();
+    if (
+      snapshot &&
+      !starting &&
+      configuration.browser_preview !== previewEnabled
+    )
+      void setPreview(configuration.browser_preview, true, false);
+  },
+);
+updateKeyboardLabels();
 connect();
 browserMeters();
 window.addEventListener("pagehide", () => {

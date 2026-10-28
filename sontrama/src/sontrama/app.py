@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
+import sounddevice as sd
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,6 +15,7 @@ from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .catalog import BankCatalog
+from .configuration import ConfigurationService
 from .models import MidiEvent, StateStore
 from .runtime import Studio
 
@@ -39,6 +41,7 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
             BankCatalog([Path(path).expanduser() for path in paths.split(os.pathsep)]),
             StateStore(Path(os.environ.get("SONTRAMA_STATE", ROOT / "data/session.json"))),
         )
+    configuration = ConfigurationService(studio)
     clients: dict[WebSocket, asyncio.Queue] = {}
 
     async def meters():
@@ -62,16 +65,27 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
                 queue.put_nowait({"type": "panic"})
             queue.put_nowait(event)
 
+    last_ports = None
+
+    def studio_event(event):
+        nonlocal last_ports
+        broadcast(event)
+        if event.get("type") == "state":
+            ports = event["status"].get("midi_available", [])
+            if ports != last_ports:
+                last_ports = ports
+                broadcast(configuration.snapshot())
+
     @asynccontextmanager
     async def lifespan(app):
         loop = asyncio.get_running_loop()
-        studio.emit = lambda event: loop.call_soon_threadsafe(broadcast, event)
+        studio.emit = lambda event: loop.call_soon_threadsafe(studio_event, event)
         await asyncio.to_thread(
             studio.start,
             audio=audio and os.getenv("SONTRAMA_NO_AUDIO") != "1",
             midi=midi and os.getenv("SONTRAMA_NO_MIDI") != "1",
-            device=os.getenv("SONTRAMA_AUDIO_DEVICE") or None,
-            block_size=int(os.getenv("SONTRAMA_BLOCK_SIZE", "256")),
+            device=configuration.settings.audio.device,
+            block_size=configuration.settings.audio.block_size,
         )
         task = asyncio.create_task(meters())
         yield
@@ -83,7 +97,34 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
 
     app = FastAPI(title="Sontrama", lifespan=lifespan)
     app.state.studio = studio
+    app.state.configuration = configuration
     app.add_middleware(SameOrigin)
+
+    @app.get("/api/settings")
+    def get_settings(refresh: bool = False):
+        if refresh:
+            configuration.refresh_audio_devices()
+        return JSONResponse(configuration.snapshot())
+
+    @app.patch("/api/settings")
+    async def update_settings(patch: dict, initialize_only: bool = False):
+        try:
+            result = await asyncio.to_thread(
+                configuration.update, patch, initialize_only=initialize_only
+            )
+        except (ValueError, OSError, RuntimeError, sd.PortAudioError) as error:
+            raise HTTPException(422, str(error)) from error
+        broadcast(result)
+        return JSONResponse(result)
+
+    @app.post("/api/settings/library/refresh")
+    async def refresh_library():
+        try:
+            result = await asyncio.to_thread(configuration.update, {}, rescan=True)
+        except (ValueError, OSError, RuntimeError, sd.PortAudioError) as error:
+            raise HTTPException(422, str(error)) from error
+        broadcast(result)
+        return JSONResponse(result)
 
     @app.get("/api/state")
     def state():
@@ -120,6 +161,7 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
         source = "web:" + uuid4().hex
         clients[socket] = queue
         await socket.send_json(studio.snapshot())
+        await socket.send_json(configuration.snapshot())
 
         async def sender():
             while True:
@@ -132,7 +174,22 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
                 try:
                     if message.get("type") == "midi":
                         event = MidiEvent.model_validate({"data": message.get("data")})
-                        studio.midi(event.data, source)
+                        controller = message.get("controller")
+                        if controller is not None and (
+                            not isinstance(controller, str) or not 1 <= len(controller) <= 200
+                        ):
+                            raise ValueError("Invalid MIDI controller name")
+                        routed_source = source + ":midi:" + controller if controller else source
+                        studio.midi(event.data, routed_source, controller=controller)
+                    elif message.get("type") == "midi_devices":
+                        names = message.get("names")
+                        if not isinstance(names, list):
+                            raise ValueError("Invalid MIDI devices")
+                        previous_names = configuration.browser_devices.get(source, [])
+                        configuration.register_browser(source, names)
+                        for name in set(previous_names) - set(names):
+                            studio.release_source(source + ":midi:" + name)
+                        broadcast(configuration.snapshot())
                     elif message.get("type") == "release":
                         studio.release_source(source)
                     elif message.get("type") == "panic":
@@ -145,6 +202,8 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
             pass
         finally:
             clients.pop(socket, None)
+            configuration.browser_devices.pop(source, None)
+            broadcast(configuration.snapshot())
             studio.release_source(source)
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError, RuntimeError):

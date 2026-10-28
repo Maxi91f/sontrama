@@ -21,6 +21,8 @@ class RtMidiSource:
         self.stopping = threading.Event()
         self.thread: threading.Thread | None = None
         self.ports: dict = {}
+        self.available_ports: list[str] = []
+        self.is_enabled: Callable[[str], bool] = lambda name: True
 
     def start(self):
         self.thread = threading.Thread(target=self._run, name="sontrama-midi", daemon=True)
@@ -37,6 +39,8 @@ class RtMidiSource:
                         names = {
                             name for name in mido.get_input_names() if "Midi Through" not in name
                         }
+                        self.available_ports = sorted(names)
+                        names = {name for name in names if self.is_enabled(name)}
                         for name in self.ports.keys() - names:
                             self._remove(name)
                         for name in names - self.ports.keys():

@@ -29,6 +29,11 @@ default for development; browser preview remains available. Vite proxies API
 and WebSocket requests to the backend. To enable native devices, set
 `SONTRAMA_NO_AUDIO=0 SONTRAMA_NO_MIDI=0` before starting the backend.
 
+To use the same server from a phone on your LAN, start the backend with
+`SONTRAMA_HOST=0.0.0.0 ./task/local/backend.sh` and open
+`http://COMPUTER-IP:8081` on the phone. All configuration is stored on the server
+and synchronized across browsers; each screen keeps its own navigation.
+
 ## Validate
 
 From `sontrama/`, select only the checks relevant to the change:

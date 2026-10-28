@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 test("live tabs, persisted controls, ordered effects and responsive geometry", async ({
   page,
@@ -323,8 +323,9 @@ test("PC rows continue across octaves and aliases share note lifetime", async ({
   await page.evaluate(() => (window as any).observer.close());
 });
 
-test("capture and preview preferences survive reload and stay local to the browser", async ({
+test("capture and preview preferences survive reload and synchronize across browsers", async ({
   page,
+  browser,
 }) => {
   await page.goto("/");
   await expect(page.locator("#connection")).toHaveText("Conectado");
@@ -361,15 +362,16 @@ test("capture and preview preferences survive reload and stay local to the brows
     )
     .toBeGreaterThan(0.001);
   await page.keyboard.up("z");
-  const other = await page.context().newPage();
+  const otherContext = await browser.newContext();
+  const other = await otherContext.newPage();
   await other.goto("/");
+  await other.getByRole("tab", { name: "Salida", exact: true }).click();
   await expect(
     other.getByRole("button", { name: "Teclado capturado", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
     other.getByRole("button", { name: "Preview activado", exact: true }),
   ).toBeVisible({ timeout: 30000 });
-  await other.close();
   await page
     .getByRole("button", { name: "Teclado capturado", exact: true })
     .click();
@@ -388,7 +390,15 @@ test("capture and preview preferences survive reload and stay local to the brows
     await page.evaluate(() =>
       JSON.parse(localStorage.getItem("sontrama.preferences.v1")!),
     ),
-  ).toMatchObject({ captureKeyboard: false, previewEnabled: false });
+  ).toEqual({ tab: "output" });
+  await expect(other.locator("#capture-keyboard")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(
+    other.getByRole("button", { name: "Activar preview", exact: true }),
+  ).toBeVisible();
+  await otherContext.close();
 });
 
 test("incoming MIDI highlights chords without browser preview and releases on disconnect", async ({

@@ -141,14 +141,14 @@ export class BrowserInstrument {
     }
   }
 
-  apply(state: Session): Promise<void> {
+  apply(state: Session, reload = false): Promise<void> {
     const generation = this.generation;
     const next = this.pending
       .catch(() => {})
       .then(async () => {
         if (generation !== this.generation || !this.context) return;
         this.state = state;
-        if (!this.engine || this.kind !== state.instrument) {
+        if (reload || !this.engine || this.kind !== state.instrument) {
           const factories = {
             banks: createBanksEngine,
             "three-osc": createThreeOscEngine,

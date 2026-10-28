@@ -54,13 +54,15 @@ Workspace-level setup, development and deployment scripts are documented in
   Add, remove, bypass and reorder up to eight effects.
 - **Mixer**: channel 01 and Master, levels, meters, mute and solo. With only
   one channel, Solo does not affect the sound; its state is saved for expansion.
-- **Salida**: the server's main output and independent browser preview.
-  The server keeps playing when the page closes. Each browser remembers its
-  preview and keyboard capture preferences. If autoplay is blocked, audio
+- **Salida**: the server's main output and browser audio preview.
+  The server keeps playing when the page closes. Preview and keyboard capture
+  preferences are shared across connected browsers. If autoplay is blocked, audio
   resumes on the next local interaction.
 
 Preview reproduces the same MIDI, instrument, parameters, effects and levels
-in the browser; Banks uses the same SoundFont.
+in the browser; Banks uses the same SoundFont. Audio is generated independently
+in each browser, while enabling or disabling preview is shared across clients
+connected to the same server. Preview does not reroute the server output.
 Web MIDI requires HTTPS or localhost and a compatible browser; USB MIDI on the
 Pi does not depend on Web MIDI. Over LAN HTTP, browser audio falls back to the
 main thread when AudioWorklet is unavailable; HTTPS enables AudioWorklet.
@@ -102,15 +104,44 @@ The installer prepares the kernel and bytecode before enabling systemd.
 By default, `.sf2` files are discovered in `data/soundfonts`,
 `/usr/share/sounds/sf2` and `/usr/share/soundfonts`. The `timgm6mb-soundfont`
 package provides TimGM6mb with 136 presets.
-To use other files or directories, set
-`SONTRAMA_SOUNDFONTS` to colon-separated paths. SoundFonts are excluded from Git.
+To use other files or directories, edit **Configuración → Biblioteca**.
+`SONTRAMA_SOUNDFONTS` supplies the initial colon-separated paths before a shared
+configuration has been saved. SoundFonts are excluded from Git.
 
 Session state is saved automatically with atomic replacement in
 `data/session.json`: preset, effects, levels, inputs, octave and output.
-The selected tab, keyboard capture and preview preferences are saved separately
-for each browser under `sontrama.preferences.v1` in localStorage.
+Shared configuration is saved separately in `data/settings.json` (next to the
+configured session file). Updates are broadcast over WebSocket, so changes on
+the computer appear on a phone connected to the same server without reloading.
+Only the selected Live tab remains local under `sontrama.preferences.v1`.
+Legacy capture/preview preferences migrate once, only if the server has no
+saved configuration; later connections cannot overwrite shared settings with
+old browser values.
 Active notes are not persisted. The application exposes the catalog but does
 not support file uploads.
+
+The gear button opens **Configuración**. Navigation appears on the left on
+desktop and above the content on smaller screens. Its sections are:
+
+- **Interfaz:** Spanish language and system/reduced/full motion preferences.
+- **Teclado:** capture on opening, fixed velocity from 1 to 127, and shortcut,
+  note, combined or hidden labels. Capture and preview toggles also update the
+  shared configuration from Live.
+- **Audio:** stereo output device, 44.1/48 kHz sample rate and 256/512/1024-frame
+  buffer. Apply explicitly to rebuild the output and release active notes.
+  Failed changes restore the previous engine and output configuration.
+- **MIDI:** automatic connection and linear/soft/hard velocity curves per
+  controller, including devices reported by Web MIDI browsers. Preferences use
+  device names, ignoring volatile ALSA client/port numbers when reconnecting.
+- **Biblioteca:** server SoundFont folders or SF2 files, and catalog rescanning.
+  Rescanning preserves the selected preset when available, selects another
+  available preset if necessary, and rejects an empty library while Banks is
+  active. It does not download or upload files.
+
+Successful saves show a bottom toast for 1.8 seconds. Errors remain visible
+in the form. Audio, MIDI and library settings refer to the server; preview audio
+is still generated independently in each browser. Environment audio settings
+provide initial defaults; saved configuration takes precedence on restart.
 
 ## Raspberry Pi and systemd
 
@@ -135,14 +166,15 @@ The generic service profile uses port **8081**. From the same network, open
 `http://PI-IP:8081`. The service listens on the LAN according to its environment
 file; it is intended for a trusted network and has no authentication.
 
-For the 3.5 mm jack, choose the device by its name as listed by
-`uv run --frozen python -m sounddevice`, then set `SONTRAMA_AUDIO_DEVICE` in
-`/etc/sontrama.env`. Check the underrun counter in **Salida**; if needed,
-increase `SONTRAMA_BLOCK_SIZE` from 256 to 512 or 1024.
+For the 3.5 mm jack, choose the headphones device under **Configuración → Audio**.
+Check the underrun counter in **Salida**; if needed, increase the buffer to 512
+or 1024 frames. `SONTRAMA_AUDIO_DEVICE` and `SONTRAMA_BLOCK_SIZE` in
+`/etc/sontrama.env` are initial defaults for installations without saved settings.
 Two synthesizers must not compete for the same audio device. Stop any other
 application using the selected device before enabling Sontrama.
 
-Configuration changes require `sudo systemctl restart sontrama`.
+Changes made in the configuration UI apply without restarting the service.
+Changes to its environment file require `sudo systemctl restart sontrama`.
 The UI reports audio/MIDI errors rather than simulating device availability.
 An example Pi 3 audio profile and hardware validation are described below.
 
@@ -150,8 +182,8 @@ An example Pi 3 audio profile and hardware validation are described below.
 
 `deploy/raspi3.env.example` provides a starting point for the Pi 3 B:
 bcm2835 headphones, 512-frame blocks and 30 ms requested buffering.
-Adjust the installation paths and audio device name for your system, then
-apply the settings in `/etc/sontrama.env` and restart the service.
+Adjust the installation paths and audio device name for your system before the
+first start. Later, use the configuration UI to save changes.
 Paths under `/home/pi/sontrama` in templates are examples; the installer
 generates the generic service configuration for the current user and directory.
 

@@ -9,6 +9,7 @@ import numpy as np
 import sounddevice as sd
 
 from .catalog import BankCatalog
+from .configuration import midi_device_id, resolve_audio_device
 from .contracts import AudioOutput, ConfigurableInstrument, Instrument, MidiSource
 from .effects import EffectChain
 from .instruments import instrument_factory as default_instrument_factory
@@ -109,6 +110,7 @@ class Studio:
         self.lock = threading.RLock()
         self.control_lock = threading.Lock()
         self.state = store.load()
+        self.custom_instrument_factory = instrument_factory
         self.instrument_factory = instrument_factory or default_instrument_factory(
             catalog, sample_rate
         )
@@ -124,8 +126,23 @@ class Studio:
         self.underruns = 0
         self.midi_source: MidiSource | None = None
         self.pending_banks: dict[tuple[str, int], int] = {}
+        self.audio_enabled = False
+        self.device = None
+        self.block_size = 256
+        self.controller_settings = {}
+        self.source_controllers: dict[str, str] = {}
+        self.catalog_revision = 0
+
+    def refresh_factory(self):
+        self.instrument_factory = self.custom_instrument_factory or default_instrument_factory(
+            self.catalog, self.sample_rate
+        )
+        self.chain = EffectChain(self.state.effects, self.sample_rate)
 
     def start(self, audio=True, midi=True, device: str | None = None, block_size=256):
+        self.audio_enabled = audio
+        self.device = device
+        self.block_size = block_size
         if self.catalog.banks:
             try:
                 self.catalog.validate_preset(
@@ -156,7 +173,10 @@ class Studio:
         if audio:
             try:
                 self.output = self.output_factory(
-                    self._audio_callback, self.sample_rate, block_size, device
+                    self._audio_callback,
+                    self.sample_rate,
+                    block_size,
+                    resolve_audio_device(device) if self.output_factory is DeviceOutput else device,
                 )
                 self.output.start()
                 self.status["audio"] = "ready"
@@ -172,6 +192,10 @@ class Studio:
                 self.release_source,
                 self._midi_error,
             )
+            if hasattr(self.midi_source, "is_enabled"):
+                self.midi_source.is_enabled = lambda name: self.controller_enabled(
+                    midi_device_id(name)
+                )
             self.midi_source.start()
 
     def snapshot(self):
@@ -186,6 +210,7 @@ class Studio:
                     "underruns": self.underruns,
                     "dsp": getattr(self.instrument, "backend", "fluidsynth"),
                     "audio_latency": getattr(self.output, "latency", None),
+                    "catalog_revision": self.catalog_revision,
                 },
             }
 
@@ -258,13 +283,170 @@ class Studio:
             self.emit(result)
             return result
 
+    def apply_configuration(self, audio, *, catalog=None, audio_changed=False, persist):
+        # Prepare resources outside the callback lock; publish a complete graph at once.
+        with self.control_lock:
+            if not audio_changed and catalog is None:
+                persist()
+                return
+            old_catalog, old_rate = self.catalog, self.sample_rate
+            old_factory, old_chain = self.instrument_factory, self.chain
+            old_state, old_instrument = self.state, self.instrument
+            old_device, old_block = self.device, self.block_size
+            old_output = self.output
+            next_catalog = catalog if catalog is not None else old_catalog
+            next_state = old_state
+            if catalog is not None and old_state.instrument == "banks":
+                try:
+                    catalog.validate_preset(old_state.soundfont, old_state.bank, old_state.program)
+                except ValueError:
+                    if catalog.banks:
+                        font = catalog.banks[0]
+                        preset = font["presets"][0]
+                        next_state = old_state.model_copy(
+                            update={
+                                "soundfont": font["id"],
+                                "bank": preset["bank"],
+                                "program": preset["program"],
+                            }
+                        )
+                    elif old_instrument:
+                        raise ValueError(
+                            "La biblioteca no tiene sonidos para Banks. Seleccioná 3 Osc antes de vaciarla."
+                        ) from None
+            factory = self.custom_instrument_factory or default_instrument_factory(
+                next_catalog, audio.sample_rate
+            )
+            replacement = None
+            if next_state.instrument != "banks" or next_catalog.banks:
+                replacement = factory(next_state)
+                replacement.midi([0xB0, 64, 127 if next_state.sustain else 0])
+            chain = EffectChain(next_state.effects, audio.sample_rate)
+            new_output = None
+            swapped = False
+            state_saved = False
+            try:
+                if audio_changed and self.audio_enabled and self.output_factory is DeviceOutput:
+                    sd.check_output_settings(
+                        device=resolve_audio_device(audio.device),
+                        channels=2,
+                        samplerate=audio.sample_rate,
+                        dtype="float32",
+                    )
+                if audio_changed and old_output:
+                    old_output.close()
+                    self.output = None
+                with self.lock:
+                    self.catalog, self.sample_rate = next_catalog, audio.sample_rate
+                    self.instrument_factory, self.chain = factory, chain
+                    self.state, self.instrument = next_state, replacement
+                    self.device, self.block_size = audio.device, audio.block_size
+                    self.router.reset()
+                    self.levels = [0.0, 0.0]
+                    swapped = True
+                if audio_changed and self.audio_enabled:
+                    device = (
+                        resolve_audio_device(audio.device)
+                        if self.output_factory is DeviceOutput
+                        else audio.device
+                    )
+                    new_output = self.output_factory(
+                        self._audio_callback, audio.sample_rate, audio.block_size, device
+                    )
+                    new_output.start()
+                    self.output = new_output
+                if next_state != old_state:
+                    self.store.save(next_state)
+                    state_saved = True
+                persist()
+            except Exception:
+                if new_output:
+                    new_output.close()
+                if swapped:
+                    with self.lock:
+                        self.catalog, self.sample_rate = old_catalog, old_rate
+                        self.instrument_factory, self.chain = old_factory, old_chain
+                        self.state, self.instrument = old_state, old_instrument
+                        self.device, self.block_size = old_device, old_block
+                        self.router.reset()
+                        if old_instrument:
+                            old_instrument.panic()
+                    if audio_changed and self.audio_enabled:
+                        try:
+                            device = (
+                                resolve_audio_device(old_device)
+                                if self.output_factory is DeviceOutput
+                                else old_device
+                            )
+                            self.output = self.output_factory(
+                                self._audio_callback, old_rate, old_block, device
+                            )
+                            self.output.start()
+                        except Exception as error:
+                            self.status["audio"] = "unavailable"
+                            self.status["errors"].append(f"Salida de audio: {error}")
+                    self.emit({"type": "panic"})
+                if replacement:
+                    replacement.close()
+                if state_saved:
+                    self.store.save(old_state)
+                raise
+            if old_instrument:
+                old_instrument.close()
+            with self.lock:
+                self.status["engine"] = "ready" if self.instrument else "unavailable"
+                self.status["audio"] = (
+                    "ready"
+                    if self.output
+                    else ("disabled" if not self.audio_enabled else "unavailable")
+                )
+                self.status["errors"] = [
+                    e
+                    for e in self.status["errors"]
+                    if not e.startswith(("Salida de audio:", "Instrumento:", "No hay SoundFonts."))
+                ]
+                if self.instrument is None and self.state.instrument == "banks":
+                    self.status["errors"].append("No hay SoundFonts. Configurá la biblioteca.")
+                if catalog is not None:
+                    self.catalog_revision += 1
+            self.emit({"type": "panic"})
+            self.emit(self.snapshot())
+
     def _dispatch(self, data: list[int]):
         if self.instrument and self.state.output == "device":
             self.instrument.midi(data)
         self.emit({"type": "midi", "data": data, "output": self.state.output})
 
-    def midi(self, data: list[int], source: str, hardware=False):
+    def controller_enabled(self, identifier: str):
+        profile = self.controller_settings.get(identifier)
+        return profile is None or profile.enabled
+
+    def set_controller_settings(self, settings):
         with self.lock:
+            self.controller_settings = settings
+            for source, identifier in list(self.source_controllers.items()):
+                if not self.controller_enabled(identifier):
+                    self.release_source(source)
+
+    def midi(self, data: list[int], source: str, hardware=False, controller: str | None = None):
+        with self.lock:
+            identifier = (
+                midi_device_id(source)
+                if hardware
+                else (midi_device_id(controller, browser=True) if controller else None)
+            )
+            if identifier:
+                self.source_controllers[source] = identifier
+                if not self.controller_enabled(identifier):
+                    return
+                profile = self.controller_settings.get(identifier)
+                if profile and data[0] & 0xF0 == 0x90 and data[2]:
+                    power = {"linear": 1, "soft": 0.5, "hard": 2}[profile.velocity_curve]
+                    data = [
+                        data[0],
+                        data[1],
+                        max(1, min(127, round(127 * (data[2] / 127) ** power))),
+                    ]
             if hardware and (
                 not self.state.usb_enabled
                 or (self.state.midi_channel is not None and data[0] & 15 != self.state.midi_channel)
@@ -295,9 +477,14 @@ class Studio:
 
     def release_source(self, source: str):
         with self.lock:
-            self.router.release_source(source)
+            sources = {source} | {
+                key for key in self.source_controllers if key.startswith(source + ":midi:")
+            }
+            for identifier in sources:
+                self.router.release_source(identifier)
+                self.source_controllers.pop(identifier, None)
             self.pending_banks = {
-                key: value for key, value in self.pending_banks.items() if key[0] != source
+                key: value for key, value in self.pending_banks.items() if key[0] not in sources
             }
 
     def panic(self):
@@ -332,9 +519,15 @@ class Studio:
             log.exception("Audio rendering failed")
 
     def _ports_changed(self, names):
+        available = list(getattr(self.midi_source, "available_ports", names))
         recovered = any(e.startswith("MIDI:") for e in self.status["errors"])
-        if names != self.status["midi"] or recovered:
+        if (
+            names != self.status["midi"]
+            or available != self.status.get("midi_available")
+            or recovered
+        ):
             self.status["midi"] = names
+            self.status["midi_available"] = available
             self.status["errors"] = [e for e in self.status["errors"] if not e.startswith("MIDI:")]
             self.emit(self.snapshot())
 

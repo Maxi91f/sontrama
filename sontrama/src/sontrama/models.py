@@ -128,7 +128,7 @@ class StateStore:
             saved["output"] = "device"
         return Session.model_validate(saved)
 
-    def save(self, state: Session):
+    def save(self, state: BaseModel):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(".tmp")
         with temporary.open("w") as file:

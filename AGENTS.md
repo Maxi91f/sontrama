@@ -20,8 +20,10 @@ when referring to controls. Do not translate UI copy as part of code cleanup.
   a NumPy fallback. Do not couple MIDI routing or effects to FluidSynth.
 - TypeScript/Vite: independent browser preview engines share `VoiceEngine`,
   Web Audio effects and mixer. Preview is independent of server audio.
-- Persistent musical settings belong to the server. Capture, preview and tab
-  preferences belong to each browser's localStorage.
+- Persist all configuration on the server and broadcast changes to connected
+  browsers. Keep musical session data in `session.json` and shared configuration
+  in `settings.json`. Only transient navigation (the selected Live tab) belongs
+  in localStorage; do not add per-browser configuration profiles.
 - Use light cream backgrounds,
   yellow accents, black borders, square corners and hard shadows. Use two-state
   buttons for toggles. Keep Inputs, Instrument, Effects, Mixer and Output in tabs.

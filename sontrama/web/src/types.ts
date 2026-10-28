@@ -62,6 +62,7 @@ export interface Snapshot {
     midi: string[];
     errors: string[];
     underruns: number;
+    catalog_revision?: number;
   };
 }
 export const effectInfo: Record<

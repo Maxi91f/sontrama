@@ -34,7 +34,7 @@ Each part has its own job; instruments and effects plug into shared contracts.
 
 - **Interchangeable instruments:** choose a sound engine while keeping the same MIDI controls and signal path.
 - **Build an effect chain:** add, bypass and reorder effects; balance the sound with channel and master controls.
-- **Try it anywhere:** play the on-screen or PC keyboard with independent browser preview. Incoming MIDI lights up the keys.
+- **Try it anywhere:** play the on-screen or PC keyboard with browser audio preview. Incoming MIDI lights up the keys.
 - **Ready for the small box:** Linux audio output, automatic USB MIDI connection and systemd startup. Tested on Raspberry Pi 3 B.
 
 ## Take a look
@@ -78,5 +78,8 @@ uv run --frozen sontrama
 ```
 
 Open **http://localhost:8081**. Enable **Preview en navegador** in **Salida** to listen in your browser.
+
+Each browser generates its own preview audio, independently of the server output.
+The preview switch is shared across connected screens.
 
 [Setup & instruments](sontrama/README.md) · [Development & deployment](docs/DEVELOPMENT.md) · [MIT License](LICENSE)

@@ -43,6 +43,7 @@ def presets_from_sf2(path: Path) -> list[Preset]:
 
 class BankCatalog:
     def __init__(self, paths: list[Path]):
+        self.roots = paths
         self.paths: dict[str, Path] = {}
         self.banks: list[dict] = []
         self.errors: list[str] = []

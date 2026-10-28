@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 
 const appDirectory = fileURLToPath(new URL("../", import.meta.url));
 const assets = path.resolve(appDirectory, "../docs/assets");
@@ -65,13 +65,36 @@ try {
   await page.goto(baseURL);
   await page.locator("#connection.connected").waitFor();
   await page.evaluate(() => document.fonts.ready);
+  // Save notifications are transient overlays, not part of the illustrated controls.
+  const captureStyle = ".settings-toast { visibility: hidden !important; }";
+  const drawer = page.locator(".keyboard-drawer");
+  const waitForToast = () =>
+    page.locator(".settings-toast").waitFor({ state: "hidden" });
+  const setDrawer = async (open) => {
+    if ((await drawer.evaluate((element) => element.open)) !== open)
+      await page.getByText("Teclado de prueba", { exact: true }).click();
+    if (!open) {
+      await expect
+        .poll(
+          async () =>
+            (await (await fetch(`${baseURL}/api/settings`)).json()).settings
+              .keyboard.capture,
+        )
+        .toBe(false);
+      if (await drawer.evaluate((element) => element.open))
+        await page.getByText("Teclado de prueba", { exact: true }).click();
+    }
+    await expect(drawer).toHaveJSProperty("open", open);
+  };
   const capture = async (name) => {
+    await waitForToast();
     await page.mouse.move(0, 0);
     await page
       .locator(":focus")
       .evaluateAll((elements) => elements.forEach((element) => element.blur()));
     const box = await page.locator(".studio").boundingBox();
     await page.screenshot({
+      style: captureStyle,
       path: path.join(assets, name),
       fullPage: true,
       clip: {
@@ -88,14 +111,21 @@ try {
   await page.locator(".oscillator").nth(2).waitFor();
   await capture("three-osc.png");
   await page.getByRole("tab", { name: "Efectos", exact: true }).click();
-  await page.getByText("Teclado de prueba", { exact: true }).click();
+  await setDrawer(true);
   await page
     .getByRole("button", { name: "Capturar teclado", exact: true })
     .click();
+  await expect
+    .poll(
+      async () =>
+        (await (await fetch(`${baseURL}/api/settings`)).json()).settings
+          .keyboard.capture,
+    )
+    .toBe(true);
   for (const key of ["z", "c", "b"]) await page.keyboard.down(key);
   await capture("effects.png");
   for (const key of ["z", "c", "b"]) await page.keyboard.up(key);
-  await page.getByText("Teclado de prueba", { exact: true }).click();
+  await setDrawer(false);
 
   await page
     .getByRole("combobox", { name: "Añadir efecto", exact: true })
@@ -103,9 +133,11 @@ try {
   await page
     .getByRole("button", { name: "Quitar Filtro", exact: true })
     .waitFor();
-  await page
-    .locator("#panel-effects")
-    .screenshot({ path: path.join(assets, "effects-chain.png") });
+  await waitForToast();
+  await page.locator("#panel-effects").screenshot({
+    path: path.join(assets, "effects-chain.png"),
+    style: captureStyle,
+  });
 
   await page.getByRole("tab", { name: "Salida", exact: true }).click();
   await page
@@ -159,7 +191,7 @@ try {
   );
   await page
     .locator("#panel-mixer")
-    .screenshot({ path: path.join(assets, "mixer.png") });
+    .screenshot({ path: path.join(assets, "mixer.png"), style: captureStyle });
   await chord([60, 64, 67], false);
   await page.getByRole("tab", { name: "Salida", exact: true }).click();
   await page
@@ -169,12 +201,13 @@ try {
     .getByRole("button", { name: "Activar preview", exact: true })
     .waitFor();
   await page.getByRole("tab", { name: "Efectos", exact: true }).click();
-  await page.getByText("Teclado de prueba", { exact: true }).click();
+  await setDrawer(true);
+  await waitForToast();
 
   const idle = path.join(temporary, "midi-idle.png");
   const keyboard = page.locator(".keyboard-drawer");
   await page.mouse.move(0, 0);
-  await keyboard.screenshot({ path: idle });
+  await keyboard.screenshot({ path: idle, style: captureStyle });
   const animation = ["-delay", "80", idle];
   const progression = [
     [60, 64, 67],
@@ -185,7 +218,7 @@ try {
   for (const [index, notes] of progression.entries()) {
     await chord(notes, true);
     const frame = path.join(temporary, `midi-chord-${index}.png`);
-    await keyboard.screenshot({ path: frame });
+    await keyboard.screenshot({ path: frame, style: captureStyle });
     animation.push("-delay", "90", frame, "-delay", "20", idle);
     await chord(notes, false);
   }
@@ -199,7 +232,7 @@ try {
     path.join(assets, "midi.gif"),
   ]);
   await page.evaluate(() => window.midiDemoSource.close());
-  await page.getByText("Teclado de prueba", { exact: true }).click();
+  await setDrawer(false);
   await page
     .getByRole("button", { name: "Quitar Filtro", exact: true })
     .click();

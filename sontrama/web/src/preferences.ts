@@ -1,45 +1,37 @@
-interface BrowserPreferences {
-  tab: string;
-  captureKeyboard: boolean;
-  previewEnabled: boolean;
-}
-
+// Navigation is local; application preferences are synchronized by the server.
 const storageKey = "sontrama.preferences.v1";
-const defaults: BrowserPreferences = {
-  tab: "instrument",
-  captureKeyboard: false,
-  previewEnabled: false,
-};
-
-function load(): BrowserPreferences {
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null");
-    return {
-      tab:
-        typeof saved?.tab === "string"
-          ? saved.tab
-          : (localStorage.getItem("sontrama-tab") ?? defaults.tab),
-      captureKeyboard:
-        typeof saved?.captureKeyboard === "boolean"
-          ? saved.captureKeyboard
-          : false,
-      previewEnabled:
-        typeof saved?.previewEnabled === "boolean"
-          ? saved.previewEnabled
-          : false,
-    };
-  } catch {
-    return { ...defaults };
-  }
+let saved: Record<string, unknown> = {};
+try {
+  saved = JSON.parse(localStorage.getItem(storageKey) ?? "null") ?? {};
+} catch {
+  // Browser storage may be unavailable or contain a malformed legacy value.
 }
-
-export const preferences = load();
-
-export function savePreferences(update: Partial<BrowserPreferences>) {
+export const preferences = {
+  tab: typeof saved.tab === "string" ? saved.tab : "instrument",
+};
+export const legacyPreferences = {
+  capture:
+    typeof saved.captureKeyboard === "boolean"
+      ? saved.captureKeyboard
+      : undefined,
+  preview:
+    typeof saved.previewEnabled === "boolean"
+      ? saved.previewEnabled
+      : undefined,
+};
+export function savePreferences(update: Partial<typeof preferences>) {
   Object.assign(preferences, update);
   try {
-    localStorage.setItem(storageKey, JSON.stringify(preferences));
+    // Keep legacy values until the server has accepted their migration.
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify({ ...saved, ...preferences }),
+    );
   } catch {
-    // Keep the controls usable when browser storage is unavailable.
+    // Navigation remains usable without browser storage.
   }
+}
+export function discardLegacyPreferences() {
+  saved = {};
+  savePreferences({});
 }
