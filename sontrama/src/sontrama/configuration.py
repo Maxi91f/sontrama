@@ -12,11 +12,12 @@ import sounddevice as sd
 from pydantic import Field
 
 from .catalog import BankCatalog
+from .errors import ApplicationError, Diagnostic, error_detail
 from .models import StateStore, StrictModel
 
 
 class InterfaceSettings(StrictModel):
-    language: Literal["es"] = "es"
+    language: Literal["es", "en"] = "en"
     motion: Literal["system", "reduced", "full"] = "system"
 
 
@@ -116,7 +117,7 @@ class ConfigurationService:
         self.path = path or studio.store.path.with_name("settings.json")
         self.lock = threading.RLock()
         self.browser_devices: dict[str, list[str]] = {}
-        self.resources = {"audio_devices": [], "audio_error": None}
+        self.resources = {"audio_devices": [], "audio_error": None, "audio_issue": None}
         defaults = Configuration(
             audio=AudioSettings(
                 device=os.getenv("SONTRAMA_AUDIO_DEVICE") or None,
@@ -141,9 +142,17 @@ class ConfigurationService:
 
     def refresh_audio_devices(self):
         try:
-            self.resources = {"audio_devices": audio_devices(), "audio_error": None}
+            self.resources = {
+                "audio_devices": audio_devices(),
+                "audio_error": None,
+                "audio_issue": None,
+            }
         except Exception as error:
-            self.resources = {"audio_devices": [], "audio_error": str(error)}
+            self.resources = {
+                "audio_devices": [],
+                "audio_error": str(error),
+                "audio_issue": error_detail(error, "audio_unavailable"),
+            }
 
     def snapshot(self):
         available = getattr(self.studio.midi_source, "available_ports", [])
@@ -198,13 +207,13 @@ class ConfigurationService:
         errors = []
         for name in settings.paths:
             if not name.strip() or len(name) > 2048:
-                raise ValueError("La carpeta de SoundFonts no es válida.")
+                raise ApplicationError("invalid_library_path", "Invalid SoundFont directory.")
             path = Path(name).expanduser().resolve()
             if not path.is_dir() and not (path.is_file() and path.suffix.lower() == ".sf2"):
-                message = f"No existe la carpeta o el SoundFont: {name}"
+                message = f"Directory or SoundFont does not exist: {name}"
                 if validate:
-                    raise ValueError(message)
-                errors.append(message)
+                    raise ApplicationError("library_path_missing", message, path=name)
+                errors.append(Diagnostic("library_path_missing", message, path=name))
                 continue
             if path not in paths:
                 paths.append(path)

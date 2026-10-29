@@ -42,6 +42,7 @@ export const test = base.extend<{ sharedConfiguration: void }>({
       }
       await request.patch("/api/settings", {
         data: {
+          interface: { language: "es" },
           keyboard: { capture: false, velocity: 100, labels: "shortcuts" },
           browser_preview: false,
         },

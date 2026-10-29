@@ -101,7 +101,7 @@ def test_settings_persist_separately_and_broadcast_to_both_clients(studio):
     [
         {"keyboard": {"velocity": 0}},
         {"keyboard": {"velocity": 128}},
-        {"interface": {"language": "en"}},
+        {"interface": {"language": "fr"}},
         {"interface": {"scale": 2}},
         {"audio": {"sample_rate": 123}},
         {"audio": {"block_size": 123}},
@@ -341,7 +341,7 @@ def test_missing_saved_soundfont_folder_does_not_prevent_startup(studio, tmp_pat
     with TestClient(create_app(restarted, audio=False, midi=False)) as client:
         state = client.get("/api/state").json()
         assert state["status"]["engine"] == "ready"
-        assert any("No existe" in error for error in state["status"]["errors"])
+        assert any("does not exist" in error for error in state["status"]["errors"])
         assert client.get("/api/settings").json()["settings"]["library"]["paths"] == [str(folder)]
 
 
@@ -356,3 +356,33 @@ def test_legacy_initialization_cannot_overwrite_another_clients_saved_settings(s
             "/api/settings?initialize_only=true", json={"keyboard": {"capture": False}}
         )
         assert second.json()["settings"]["keyboard"]["capture"]
+
+
+@pytest.mark.parametrize("language", ["es", "en"])
+def test_language_is_shared_and_persisted_without_translating_api_errors(studio, language):
+    with (
+        TestClient(create_app(studio, audio=False, midi=False)) as client,
+        client.websocket_connect("/ws") as socket,
+    ):
+        receive_type(socket, "settings")
+        response = client.patch("/api/settings", json={"interface": {"language": language}})
+        assert response.status_code == 200
+        assert receive_type(socket, "settings")["settings"]["interface"]["language"] == language
+        missing = "/missing-soundfonts"
+        response = client.patch("/api/settings", json={"library": {"paths": [missing]}})
+        assert response.status_code == 422
+        assert response.json()["detail"] == {
+            "code": "library_path_missing",
+            "message": f"Directory or SoundFont does not exist: {missing}",
+            "params": {"path": missing},
+        }
+        invalid = client.patch("/api/settings", json={"keyboard": {"velocity": 0}})
+        assert invalid.json()["detail"]["code"] == "validation_failed"
+        socket.send_json({"type": "unknown"})
+        error = receive_type(socket, "error")
+        assert error["code"] == "invalid_midi_message"
+        assert error["message"] == "Unknown message"
+    assert (
+        ConfigurationService(Studio(studio.catalog, studio.store)).settings.interface.language
+        == language
+    )

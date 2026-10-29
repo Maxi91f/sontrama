@@ -1,8 +1,7 @@
 # Sontrama
 
 Live MIDI studio for Raspberry Pi 3 B and Linux, with a responsive web interface.
-Code and documentation use English; the UI currently uses Spanish.
-Spanish labels below refer to the controls displayed in the application.
+Code and documentation use English; the UI supports Spanish and English.
 
 ## Running locally
 
@@ -19,9 +18,9 @@ uv run --frozen sontrama
 
 Open <http://127.0.0.1:8081>. No Internet connection is required after installation
 and building. FluidSynth WASM assets are served locally.
-To listen on this computer, open **Salida** and enable **Preview en navegador**.
+To listen on this computer, open **Output** and enable **Browser preview**.
 This is an additional monitor and does not change the server's main output.
-In **Teclado de prueba**, **Capturar teclado** toggles PC keyboard capture only.
+In **Test keyboard**, **Capture keyboard** toggles PC keyboard capture only.
 The on-screen keyboard also supports mouse and touch input.
 
 Z/X/C/V/B/N/M play white keys starting at C4; S/D/G/H/J play black keys.
@@ -45,16 +44,16 @@ Workspace-level setup, development and deployment scripts are documented in
 
 ## Live
 
-- **Entradas**: automatic connection to the server's USB MIDI devices, channel
+- **Inputs**: automatic connection to the server's USB MIDI devices, channel
   selection, and optional Web MIDI for devices attached to the browsing computer.
-- **Instrumento**: Banks (SF2 SoundFonts and their actual banks/presets) or
+- **Instrument**: Banks (SF2 SoundFonts and their actual banks/presets) or
   3 Osc (three-oscillator synthesis without SoundFonts). Both support octave
   shifts, sustain CC64, modulation CC1, pitch bend and MIDI pressure.
-- **Efectos**: chorus, reverb, gain and low-pass filtering in series.
+- **Effects**: chorus, reverb, gain and low-pass filtering in series.
   Add, remove, bypass and reorder up to eight effects.
 - **Mixer**: channel 01 and Master, levels, meters, mute and solo. With only
   one channel, Solo does not affect the sound; its state is saved for expansion.
-- **Salida**: the server's main output and browser audio preview.
+- **Output**: the server's main output and browser audio preview.
   The server keeps playing when the page closes. Preview and keyboard capture
   preferences are shared across connected browsers. If autoplay is blocked, audio
   resumes on the next local interaction.
@@ -104,7 +103,7 @@ The installer prepares the kernel and bytecode before enabling systemd.
 By default, `.sf2` files are discovered in `data/soundfonts`,
 `/usr/share/sounds/sf2` and `/usr/share/soundfonts`. The `timgm6mb-soundfont`
 package provides TimGM6mb with 136 presets.
-To use other files or directories, edit **Configuración → Biblioteca**.
+To use other files or directories, edit **Settings → Library**.
 `SONTRAMA_SOUNDFONTS` supplies the initial colon-separated paths before a shared
 configuration has been saved. SoundFonts are excluded from Git.
 
@@ -120,11 +119,11 @@ old browser values.
 Active notes are not persisted. The application exposes the catalog but does
 not support file uploads.
 
-The gear button opens **Configuración**. Navigation appears on the left on
+The gear button opens **Settings**. Navigation appears on the left on
 desktop and above the content on smaller screens. Its sections are:
 
-- **Interfaz:** Spanish language and system/reduced/full motion preferences.
-- **Teclado:** capture on opening, fixed velocity from 1 to 127, and shortcut,
+- **Interface:** shared Spanish/English language and system/reduced/full motion preferences.
+- **Keyboard:** capture on opening, fixed velocity from 1 to 127, and shortcut,
   note, combined or hidden labels. Capture and preview toggles also update the
   shared configuration from Live.
 - **Audio:** stereo output device, 44.1/48 kHz sample rate and 256/512/1024-frame
@@ -133,7 +132,7 @@ desktop and above the content on smaller screens. Its sections are:
 - **MIDI:** automatic connection and linear/soft/hard velocity curves per
   controller, including devices reported by Web MIDI browsers. Preferences use
   device names, ignoring volatile ALSA client/port numbers when reconnecting.
-- **Biblioteca:** server SoundFont folders or SF2 files, and catalog rescanning.
+- **Library:** server SoundFont folders or SF2 files, and catalog rescanning.
   Rescanning preserves the selected preset when available, selects another
   available preset if necessary, and rejects an empty library while Banks is
   active. It does not download or upload files.
@@ -166,8 +165,8 @@ The generic service profile uses port **8081**. From the same network, open
 `http://PI-IP:8081`. The service listens on the LAN according to its environment
 file; it is intended for a trusted network and has no authentication.
 
-For the 3.5 mm jack, choose the headphones device under **Configuración → Audio**.
-Check the underrun counter in **Salida**; if needed, increase the buffer to 512
+For the 3.5 mm jack, choose the headphones device under **Settings → Audio**.
+Check the underrun counter in **Output**; if needed, increase the buffer to 512
 or 1024 frames. `SONTRAMA_AUDIO_DEVICE` and `SONTRAMA_BLOCK_SIZE` in
 `/etc/sontrama.env` are initial defaults for installations without saved settings.
 Two synthesizers must not compete for the same audio device. Stop any other
@@ -254,3 +253,21 @@ The frontend uses [js-synthesizer](https://github.com/jet2jet/js-synthesizer)
 (BSD-3-Clause) and [FluidSynth Emscripten](https://github.com/jet2jet/fluidsynth-emscripten)
 (LGPL-2.1). `npm run build` copies their licenses alongside the served assets.
 The SoundFont comes from its system package and retains its own license.
+
+## Localization
+
+User-facing copy lives in `web/src/locales/es.ts` and `en.ts`, using i18next.
+English is the default. The server persists and broadcasts the selected language;
+changing it updates connected screens without restarting audio or releasing notes.
+Keep complete sentences in the catalogs and interpolate variable content. Device,
+SoundFont and preset names are external data and retain their original names.
+Escape external values when inserting translated text into HTML; use `textContent`
+for notifications. Translation keys are checked by TypeScript against both catalogs.
+
+The backend always uses English diagnostics, independently of the selected language.
+HTTP errors expose `detail: { code, message, params }`; WebSocket errors expose
+`{ type: "error", code, message, params }`. State snapshots include structured
+`status.issues` alongside the English `status.errors` diagnostics. Audio discovery
+includes `resources.audio_issue` alongside `audio_error`. Frontend notifications
+translate codes and parameters, with a generic localized fallback for unknown codes;
+raw diagnostic messages remain available to API clients.

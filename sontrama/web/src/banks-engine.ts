@@ -1,3 +1,4 @@
+import { LocalizedError } from "./i18n";
 import type { ISynthesizer } from "js-synthesizer";
 import type { Session } from "./types";
 import type { VoiceEngine } from "./voice-engine";
@@ -15,13 +16,13 @@ class BanksEngine implements VoiceEngine {
     return this.fontId >= 0 && !this.closed;
   }
   async configure(state: Session) {
-    if (!state.soundfont) throw new Error("No hay un SoundFont instalado.");
+    if (!state.soundfont) throw new LocalizedError("errors.noSoundfont");
     if (this.font !== state.soundfont) {
       this.panic();
       const response = await fetch(
         `/api/soundfonts/${encodeURIComponent(state.soundfont)}`,
       );
-      if (!response.ok) throw new Error("No se pudo cargar el SoundFont.");
+      if (!response.ok) throw new LocalizedError("errors.loadSoundfont");
       const data = await response.arrayBuffer();
       if (this.closed) return;
       const identifier = await this.synth.loadSFont(data);

@@ -72,7 +72,7 @@ try {
     page.locator(".settings-toast").waitFor({ state: "hidden" });
   const setDrawer = async (open) => {
     if ((await drawer.evaluate((element) => element.open)) !== open)
-      await page.getByText("Teclado de prueba", { exact: true }).click();
+      await page.getByText("Test keyboard", { exact: true }).click();
     if (!open) {
       await expect
         .poll(
@@ -82,7 +82,7 @@ try {
         )
         .toBe(false);
       if (await drawer.evaluate((element) => element.open))
-        await page.getByText("Teclado de prueba", { exact: true }).click();
+        await page.getByText("Test keyboard", { exact: true }).click();
     }
     await expect(drawer).toHaveJSProperty("open", open);
   };
@@ -106,14 +106,14 @@ try {
     });
   };
   await page
-    .getByRole("combobox", { name: "Instrumento", exact: true })
+    .getByRole("combobox", { name: "Instrument", exact: true })
     .selectOption("three-osc");
   await page.locator(".oscillator").nth(2).waitFor();
   await capture("three-osc.png");
-  await page.getByRole("tab", { name: "Efectos", exact: true }).click();
+  await page.getByRole("tab", { name: "Effects", exact: true }).click();
   await setDrawer(true);
   await page
-    .getByRole("button", { name: "Capturar teclado", exact: true })
+    .getByRole("button", { name: "Capture keyboard", exact: true })
     .click();
   await expect
     .poll(
@@ -128,10 +128,10 @@ try {
   await setDrawer(false);
 
   await page
-    .getByRole("combobox", { name: "Añadir efecto", exact: true })
+    .getByRole("combobox", { name: "Add effect", exact: true })
     .selectOption("filter");
   await page
-    .getByRole("button", { name: "Quitar Filtro", exact: true })
+    .getByRole("button", { name: "Remove Filter", exact: true })
     .waitFor();
   await waitForToast();
   await page.locator("#panel-effects").screenshot({
@@ -139,12 +139,12 @@ try {
     style: captureStyle,
   });
 
-  await page.getByRole("tab", { name: "Salida", exact: true }).click();
+  await page.getByRole("tab", { name: "Output", exact: true }).click();
   await page
-    .getByRole("button", { name: "Activar preview", exact: true })
+    .getByRole("button", { name: "Enable preview", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Preview activado", exact: true })
+    .getByRole("button", { name: "Preview enabled", exact: true })
     .waitFor();
   await page.getByRole("tab", { name: "Mixer", exact: true }).click();
   await page.evaluate(async () => {
@@ -193,14 +193,14 @@ try {
     .locator("#panel-mixer")
     .screenshot({ path: path.join(assets, "mixer.png"), style: captureStyle });
   await chord([60, 64, 67], false);
-  await page.getByRole("tab", { name: "Salida", exact: true }).click();
+  await page.getByRole("tab", { name: "Output", exact: true }).click();
   await page
-    .getByRole("button", { name: "Preview activado", exact: true })
+    .getByRole("button", { name: "Preview enabled", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Activar preview", exact: true })
+    .getByRole("button", { name: "Enable preview", exact: true })
     .waitFor();
-  await page.getByRole("tab", { name: "Efectos", exact: true }).click();
+  await page.getByRole("tab", { name: "Effects", exact: true }).click();
   await setDrawer(true);
   await waitForToast();
 
@@ -234,16 +234,16 @@ try {
   await page.evaluate(() => window.midiDemoSource.close());
   await setDrawer(false);
   await page
-    .getByRole("button", { name: "Quitar Filtro", exact: true })
+    .getByRole("button", { name: "Remove Filter", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Quitar Filtro", exact: true })
+    .getByRole("button", { name: "Remove Filter", exact: true })
     .waitFor({ state: "detached" });
-  await page.getByRole("tab", { name: "Instrumento", exact: true }).click();
+  await page.getByRole("tab", { name: "Instrument", exact: true }).click();
   await page
-    .getByRole("combobox", { name: "Instrumento", exact: true })
+    .getByRole("combobox", { name: "Instrument", exact: true })
     .selectOption("banks");
-  await page.getByRole("combobox", { name: "Sonido", exact: true }).waitFor();
+  await page.getByRole("combobox", { name: "Sound", exact: true }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   await capture("mobile.png");
   console.log("Saved real UI screenshots to docs/assets (isolated session).");

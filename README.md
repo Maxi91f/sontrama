@@ -77,7 +77,7 @@ uv sync --frozen && npm ci && npm run build
 uv run --frozen sontrama
 ```
 
-Open **http://localhost:8081**. Enable **Preview en navegador** in **Salida** to listen in your browser.
+Open **http://localhost:8081**. Enable **Browser preview** in **Output** to listen in your browser.
 
 Each browser generates its own preview audio, independently of the server output.
 The preview switch is shared across connected screens.

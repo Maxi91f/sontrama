@@ -12,6 +12,7 @@ from .catalog import BankCatalog
 from .configuration import midi_device_id, resolve_audio_device
 from .contracts import AudioOutput, ConfigurableInstrument, Instrument, MidiSource
 from .effects import EffectChain
+from .errors import ApplicationError, Diagnostic, error_detail
 from .instruments import instrument_factory as default_instrument_factory
 from .midi import RtMidiSource
 from .models import Session, StateStore
@@ -167,9 +168,13 @@ class Studio:
                 self.instrument.midi([0xB0, 64, 127 if self.state.sustain else 0])
                 self.status["engine"] = "ready"
             except Exception as error:
-                self.status["errors"].append(f"Instrumento: {error}")
+                self.status["errors"].append(
+                    Diagnostic("instrument_unavailable", f"Instrument: {error}")
+                )
         else:
-            self.status["errors"].append("No hay SoundFonts. Configurá SONTRAMA_SOUNDFONTS.")
+            self.status["errors"].append(
+                Diagnostic("soundfonts_missing", "No SoundFonts. Configure SONTRAMA_SOUNDFONTS.")
+            )
         if audio:
             try:
                 self.output = self.output_factory(
@@ -182,7 +187,9 @@ class Studio:
                 self.status["audio"] = "ready"
             except Exception as error:
                 self.status["audio"] = "unavailable"
-                self.status["errors"].append(f"Salida de audio: {error}")
+                self.status["errors"].append(
+                    Diagnostic("audio_unavailable", f"Audio output: {error}")
+                )
         else:
             self.status["audio"] = "disabled"
         if midi:
@@ -207,6 +214,10 @@ class Studio:
                 "status": {
                     **self.status,
                     "errors": self.status["errors"] + self.catalog.errors,
+                    "issues": [
+                        error_detail(error, "soundfont_invalid")
+                        for error in self.status["errors"] + self.catalog.errors
+                    ],
                     "underruns": self.underruns,
                     "dsp": getattr(self.instrument, "backend", "fluidsynth"),
                     "audio_latency": getattr(self.output, "latency", None),
@@ -269,7 +280,8 @@ class Studio:
                     self.status["errors"] = [
                         error
                         for error in self.status["errors"]
-                        if not error.startswith(("Instrumento:", "No hay SoundFonts."))
+                        if getattr(error, "code", "")
+                        not in ("instrument_unavailable", "soundfonts_missing")
                     ]
                 if self.instrument and (reset or candidate.sustain != previous.sustain):
                     self.instrument.midi([0xB0, 64, 127 if candidate.sustain else 0])
@@ -311,8 +323,9 @@ class Studio:
                             }
                         )
                     elif old_instrument:
-                        raise ValueError(
-                            "La biblioteca no tiene sonidos para Banks. Seleccioná 3 Osc antes de vaciarla."
+                        raise ApplicationError(
+                            "banks_library_empty",
+                            "The library has no Banks sounds. Select 3 Osc before emptying it.",
                         ) from None
             factory = self.custom_instrument_factory or default_instrument_factory(
                 next_catalog, audio.sample_rate
@@ -384,7 +397,9 @@ class Studio:
                             self.output.start()
                         except Exception as error:
                             self.status["audio"] = "unavailable"
-                            self.status["errors"].append(f"Salida de audio: {error}")
+                            self.status["errors"].append(
+                                Diagnostic("audio_unavailable", f"Audio output: {error}")
+                            )
                     self.emit({"type": "panic"})
                 if replacement:
                     replacement.close()
@@ -403,10 +418,13 @@ class Studio:
                 self.status["errors"] = [
                     e
                     for e in self.status["errors"]
-                    if not e.startswith(("Salida de audio:", "Instrumento:", "No hay SoundFonts."))
+                    if getattr(e, "code", "")
+                    not in ("audio_unavailable", "instrument_unavailable", "soundfonts_missing")
                 ]
                 if self.instrument is None and self.state.instrument == "banks":
-                    self.status["errors"].append("No hay SoundFonts. Configurá la biblioteca.")
+                    self.status["errors"].append(
+                        Diagnostic("soundfonts_missing", "No SoundFonts. Configure the library.")
+                    )
                 if catalog is not None:
                     self.catalog_revision += 1
             self.emit({"type": "panic"})
@@ -520,7 +538,7 @@ class Studio:
 
     def _ports_changed(self, names):
         available = list(getattr(self.midi_source, "available_ports", names))
-        recovered = any(e.startswith("MIDI:") for e in self.status["errors"])
+        recovered = any(getattr(e, "code", "") == "midi_unavailable" for e in self.status["errors"])
         if (
             names != self.status["midi"]
             or available != self.status.get("midi_available")
@@ -528,12 +546,16 @@ class Studio:
         ):
             self.status["midi"] = names
             self.status["midi_available"] = available
-            self.status["errors"] = [e for e in self.status["errors"] if not e.startswith("MIDI:")]
+            self.status["errors"] = [
+                e for e in self.status["errors"] if getattr(e, "code", "") != "midi_unavailable"
+            ]
             self.emit(self.snapshot())
 
     def _midi_error(self, error):
-        self.status["errors"] = [e for e in self.status["errors"] if not e.startswith("MIDI:")]
-        self.status["errors"].append(error)
+        self.status["errors"] = [
+            e for e in self.status["errors"] if getattr(e, "code", "") != "midi_unavailable"
+        ]
+        self.status["errors"].append(Diagnostic("midi_unavailable", error))
         self.emit(self.snapshot())
 
     def close(self):

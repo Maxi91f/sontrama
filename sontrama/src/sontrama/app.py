@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import sounddevice as sd
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
@@ -16,6 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from .catalog import BankCatalog
 from .configuration import ConfigurationService
+from .errors import error_detail
 from .models import MidiEvent, StateStore
 from .runtime import Studio
 
@@ -27,7 +29,14 @@ class SameOrigin(BaseHTTPMiddleware):
         origin = request.headers.get("origin")
         expected = f"{request.url.scheme}://{request.headers.get('host')}"
         if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin != expected:
-            return JSONResponse({"detail": "Cross-origin control is not allowed"}, status_code=403)
+            return JSONResponse(
+                {
+                    "detail": error_detail(
+                        "Cross-origin control is not allowed", "cross_origin_forbidden"
+                    )
+                },
+                status_code=403,
+            )
         return await call_next(request)
 
 
@@ -100,6 +109,12 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
     app.state.configuration = configuration
     app.add_middleware(SameOrigin)
 
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_error(request: Request, error: RequestValidationError):
+        return JSONResponse(
+            {"detail": error_detail(str(error), "validation_failed")}, status_code=422
+        )
+
     @app.get("/api/settings")
     def get_settings(refresh: bool = False):
         if refresh:
@@ -113,7 +128,7 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
                 configuration.update, patch, initialize_only=initialize_only
             )
         except (ValueError, OSError, RuntimeError, sd.PortAudioError) as error:
-            raise HTTPException(422, str(error)) from error
+            raise HTTPException(422, error_detail(error)) from error
         broadcast(result)
         return JSONResponse(result)
 
@@ -122,7 +137,7 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
         try:
             result = await asyncio.to_thread(configuration.update, {}, rescan=True)
         except (ValueError, OSError, RuntimeError, sd.PortAudioError) as error:
-            raise HTTPException(422, str(error)) from error
+            raise HTTPException(422, error_detail(error)) from error
         broadcast(result)
         return JSONResponse(result)
 
@@ -135,7 +150,7 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
         try:
             return JSONResponse(studio.update(patch))
         except (ValidationError, ValueError) as error:
-            raise HTTPException(422, str(error)) from error
+            raise HTTPException(422, error_detail(error)) from error
 
     @app.post("/api/panic")
     def panic():
@@ -146,7 +161,7 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
     def soundfont(identifier: str):
         path = studio.catalog.paths.get(identifier)
         if path is None:
-            raise HTTPException(404, "Unknown SoundFont")
+            raise HTTPException(404, error_detail("Unknown SoundFont", "soundfont_unknown"))
         return FileResponse(path, media_type="application/octet-stream", filename=path.name)
 
     @app.websocket("/ws")
@@ -197,7 +212,9 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
                     else:
                         raise ValueError("Unknown message")
                 except (ValidationError, ValueError, AttributeError) as error:
-                    queue.put_nowait({"type": "error", "message": str(error)})
+                    queue.put_nowait(
+                        {"type": "error", **error_detail(error, "invalid_midi_message")}
+                    )
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
@@ -216,6 +233,13 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
 
         @app.get("/")
         def missing_frontend():
-            return JSONResponse({"detail": "Run npm ci && npm run build in sontrama/"}, 503)
+            return JSONResponse(
+                {
+                    "detail": error_detail(
+                        "Run npm ci && npm run build in sontrama/", "frontend_unavailable"
+                    )
+                },
+                503,
+            )
 
     return app

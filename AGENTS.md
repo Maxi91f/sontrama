@@ -7,10 +7,12 @@ lockfile for Python and `npm ci` for frontend dependencies.
 ## Language
 
 Write code identifiers, comments, docstrings, developer-facing messages,
-documentation and commit messages in English. Keep the user interface in
-Spanish for now, including visible labels, accessibility labels and user-facing
-messages. Tests and documentation may quote existing Spanish UI labels exactly
-when referring to controls. Do not translate UI copy as part of code cleanup.
+documentation and commit messages in English. Localize all user-facing frontend
+copy through i18next catalogs, including accessibility labels and messages.
+Support English (the default) and Spanish; persist the shared language on the
+server. Keep backend diagnostics in English and expose stable error codes with
+parameters for frontend localization. Tests and documentation may quote UI
+labels exactly when referring to controls.
 
 ## Architecture
 

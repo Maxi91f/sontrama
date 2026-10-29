@@ -7,6 +7,8 @@ import struct
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from .errors import ApplicationError, Diagnostic
+
 
 @dataclass(frozen=True)
 class Preset:
@@ -60,7 +62,11 @@ class BankCatalog:
                     if not presets:
                         raise ValueError("SoundFont has no playable presets")
                 except (OSError, ValueError, struct.error) as error:
-                    self.errors.append(f"{candidate.name}: {error}")
+                    self.errors.append(
+                        Diagnostic(
+                            "soundfont_invalid", f"{candidate.name}: {error}", name=candidate.name
+                        )
+                    )
                     continue
                 identifier = hashlib.sha256(str(candidate).encode()).hexdigest()[:16]
                 self.paths[identifier] = candidate
@@ -77,5 +83,5 @@ class BankCatalog:
             if entry["id"] == identifier:
                 if any(p["bank"] == bank and p["program"] == program for p in entry["presets"]):
                     return
-                raise ValueError("Preset unavailable in this SoundFont")
-        raise ValueError("Unknown SoundFont")
+                raise ApplicationError("preset_unavailable", "Preset unavailable in this SoundFont")
+        raise ApplicationError("soundfont_unknown", "Unknown SoundFont")

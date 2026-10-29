@@ -1,7 +1,16 @@
+import {
+  t,
+  setLanguage,
+  apiError,
+  LocalizedError,
+  errorText,
+  issueText,
+  type ApiIssue,
+} from "./i18n";
 import { discardLegacyPreferences, legacyPreferences } from "./preferences";
 
 export interface Configuration {
-  interface: { language: "es"; motion: "system" | "reduced" | "full" };
+  interface: { language: "es" | "en"; motion: "system" | "reduced" | "full" };
   keyboard: {
     capture: boolean;
     velocity: number;
@@ -20,6 +29,7 @@ export interface Configuration {
 interface Resources {
   audio_devices: { id: string; name: string; api: string }[];
   audio_error: string | null;
+  audio_issue?: ApiIssue | null;
   audio_enabled: boolean;
   midi_inputs: {
     id: string;
@@ -35,7 +45,7 @@ export interface SettingsMessage {
   resources: Resources;
 }
 export const sharedSettings: Configuration = {
-  interface: { language: "es", motion: "system" },
+  interface: { language: "en", motion: "system" },
   keyboard: { capture: false, velocity: 100, labels: "shortcuts" },
   audio: { device: null, sample_rate: 44100, block_size: 256 },
   midi: { devices: {} },
@@ -43,12 +53,12 @@ export const sharedSettings: Configuration = {
   browser_preview: false,
 };
 const sections = [
-  ["interface", "Interfaz"],
-  ["keyboard", "Teclado"],
-  ["audio", "Audio"],
-  ["midi", "MIDI"],
-  ["library", "Biblioteca"],
-];
+  ["interface", "settings.interface"],
+  ["keyboard", "settings.keyboard"],
+  ["audio", "settings.audio"],
+  ["midi", "settings.midi"],
+  ["library", "settings.library"],
+] as const;
 const escape = (value: unknown) =>
   String(value).replace(
     /[&<>"']/g,
@@ -66,8 +76,8 @@ const option = (
 export const settingsIcon = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M9 2h6l.5 3 2 1 2.5-1 3 5-2.5 2v2L23 16l-3 5-2.5-1-2 1-.5 3H9l-.5-3-2-1L4 21l-3-5 2.5-2v-2L1 10l3-5 2.5 1 2-1L9 2Zm3 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" transform="translate(1 0) scale(.92)"/></svg>`;
 export function settingsView() {
   return `<section id="settings-view" class="settings-view" aria-labelledby="settings-heading" hidden>
-    <header class="settings-header"><h2 id="settings-heading" tabindex="-1">Configuración</h2><button type="button" id="close-settings">← Volver</button></header>
-    <div class="settings-layout"><nav class="settings-nav" aria-label="Secciones de configuración">${sections.map(([key, name]) => `<a href="#settings/${key}" data-section="${key}">${name}</a>`).join("")}</nav>
+    <header class="settings-header"><h2 id="settings-heading" tabindex="-1">${t("nav.settings")}</h2><button type="button" id="close-settings">${t("nav.back")}</button></header>
+    <div class="settings-layout"><nav class="settings-nav" aria-label="${t("nav.settingsSections")}">${sections.map(([key, name]) => `<a href="#settings/${key}" data-section="${key}">${t(name)}</a>`).join("")}</nav>
     <div class="settings-content"><p id="settings-feedback" role="status" hidden></p><div id="settings-fields"></div></div></div></section>`;
 }
 export function initializeSettings(
@@ -118,25 +128,25 @@ export function initializeSettings(
   }
   function render() {
     const config = sharedSettings;
-    const title = `<h3>${sections.find(([key]) => key === active)![1]}</h3>`;
+    const title = `<h3>${t(sections.find(([key]) => key === active)![1])}</h3>`;
     if (active === "interface")
       fields.innerHTML =
         title +
-        `<div class="settings-form"><label class="field">Idioma<select id="interface-language"><option value="es">Español</option></select></label><label class="field">Animaciones<select id="interface-motion">${[
-          ["system", "Seguir al sistema"],
-          ["reduced", "Reducidas"],
-          ["full", "Activadas"],
+        `<div class="settings-form"><label class="field">${t("settings.language")}<select id="interface-language">${option("es", t("languages.es"), config.interface.language)}${option("en", t("languages.en"), config.interface.language)}</select></label><label class="field">${t("settings.motion")}<select id="interface-motion">${[
+          ["system", t("settings.systemMotion")],
+          ["reduced", t("settings.reducedMotion")],
+          ["full", t("settings.fullMotion")],
         ]
           .map(([key, name]) => option(key, name, config.interface.motion))
           .join("")}</select></label></div>`;
     if (active === "keyboard")
       fields.innerHTML =
         title +
-        `<div class="settings-form"><button type="button" id="settings-capture" aria-pressed="${config.keyboard.capture}">Capturar teclado al abrir</button><label class="range-label">Velocidad fija<output id="keyboard-velocity-value">${config.keyboard.velocity}</output><input type="range" id="keyboard-velocity" aria-label="Velocidad fija" min="1" max="127" step="1" value="${config.keyboard.velocity}"></label><p class="muted">Intensidad de las notas tocadas desde la PC o la pantalla.</p><label class="field">Etiquetas del teclado<select id="keyboard-labels">${[
-          ["shortcuts", "Atajos"],
-          ["notes", "Notas"],
-          ["both", "Notas y atajos"],
-          ["none", "Ocultas"],
+        `<div class="settings-form"><button type="button" id="settings-capture" aria-pressed="${config.keyboard.capture}">${t("settings.capture")}</button><label class="range-label">${t("settings.velocity")}<output id="keyboard-velocity-value">${config.keyboard.velocity}</output><input type="range" id="keyboard-velocity" aria-label="${t("settings.velocity")}" min="1" max="127" step="1" value="${config.keyboard.velocity}"></label><p class="muted">${t("settings.velocityHint")}</p><label class="field">${t("settings.labels")}<select id="keyboard-labels">${[
+          ["shortcuts", t("settings.shortcuts")],
+          ["notes", t("settings.notes")],
+          ["both", t("settings.both")],
+          ["none", t("settings.hidden")],
         ]
           .map(([key, name]) => option(key, name, config.keyboard.labels))
           .join("")}</select></label></div>`;
@@ -147,7 +157,7 @@ export function initializeSettings(
       );
       fields.innerHTML =
         title +
-        `<div class="settings-form"><label class="field">Dispositivo de salida<select id="audio-device">${option("", "Predeterminado del sistema", audio.device ?? "")}${resources.audio_devices.map((device) => option(device.id, `${device.name} · ${device.api}`, audio.device ?? "")).join("")}${audio.device && !known ? option(audio.device, audio.device, audio.device) : ""}</select></label><button type="button" id="refresh-audio">Actualizar dispositivos</button><label class="field">Frecuencia de muestreo<select id="audio-rate">${[44100, 48000].map((rate) => option(rate, `${rate.toLocaleString("es")} Hz`, audio.sample_rate)).join("")}</select></label><label class="field">Tamaño de buffer<select id="audio-block">${[256, 512, 1024].map((size) => option(size, `${size} frames`, audio.block_size)).join("")}</select></label><p class="muted">Aplicar reinicia la salida y libera las notas activas.${resources.audio_enabled ? "" : " La salida del servidor está desactivada en este entorno; se guardará la configuración para cuando se active."}</p>${resources.audio_error ? `<p class="muted">${escape(resources.audio_error)}</p>` : ""}<button type="button" id="apply-audio" ${busy ? "disabled" : ""}>Aplicar audio</button></div>`;
+        `<div class="settings-form"><label class="field">${t("settings.device")}<select id="audio-device">${option("", t("settings.defaultDevice"), audio.device ?? "")}${resources.audio_devices.map((device) => option(device.id, `${device.name} · ${device.api}`, audio.device ?? "")).join("")}${audio.device && !known ? option(audio.device, audio.device, audio.device) : ""}</select></label><button type="button" id="refresh-audio">${t("settings.refreshDevices")}</button><label class="field">${t("settings.sampleRate")}<select id="audio-rate">${[44100, 48000].map((rate) => option(rate, `${rate.toLocaleString(config.interface.language)} Hz`, audio.sample_rate)).join("")}</select></label><label class="field">${t("settings.buffer")}<select id="audio-block">${[256, 512, 1024].map((size) => option(size, t("settings.frames", { count: size }), audio.block_size)).join("")}</select></label><p class="muted">${t("settings.applyHint")}${resources.audio_enabled ? "" : t("settings.disabledHint")}</p>${resources.audio_error ? `<p class="muted">${escape(issueText(resources.audio_issue ?? { code: "audio_unavailable", message: resources.audio_error }))}</p>` : ""}<button type="button" id="apply-audio" ${busy ? "disabled" : ""}>${t("settings.applyAudio")}</button></div>`;
     }
     if (active === "midi")
       fields.innerHTML =
@@ -159,21 +169,20 @@ export function initializeSettings(
                 enabled: true,
                 velocity_curve: "linear",
               };
-              return `<section class="settings-device" data-midi-device="${escape(device.id)}"><h4>${escape(device.name)}</h4><p class="muted">${device.location === "server" ? "Servidor" : "Navegador"} · ${device.connected ? "Detectado" : "Desconectado"}</p><button type="button" data-midi-enabled="${escape(device.id)}" aria-pressed="${profile.enabled}">Conectar automáticamente</button><label class="field">Curva de velocidad<select data-midi-curve="${escape(device.id)}" aria-label="Curva de velocidad · ${escape(device.name)}">${[
-                ["linear", "Lineal"],
-                ["soft", "Suave"],
-                ["hard", "Dura"],
+              return `<section class="settings-device" data-midi-device="${escape(device.id)}"><h4>${escape(device.name)}</h4><p class="muted">${device.location === "server" ? t("settings.server") : t("settings.browser")} · ${device.connected ? t("settings.detected") : t("settings.disconnected")}</p><button type="button" data-midi-enabled="${escape(device.id)}" aria-pressed="${profile.enabled}">${t("settings.autoConnect")}</button><label class="field">${t("settings.curve")}<select data-midi-curve="${escape(device.id)}" aria-label="${escape(t("settings.deviceCurve", { device: device.name }))}">${[
+                ["linear", t("settings.linear")],
+                ["soft", t("settings.soft")],
+                ["hard", t("settings.hard")],
               ]
                 .map(([key, name]) => option(key, name, profile.velocity_curve))
                 .join("")}</select></label></section>`;
             })
-            .join("") ||
-          '<p class="muted">No se detectaron dispositivos MIDI. Conectá uno al servidor, o habilitá el MIDI del navegador en Entradas.</p>'
-        }</div><p class="muted">Suave requiere menos fuerza para tocar fuerte; dura requiere más. Las preferencias se recuerdan al reconectar cada controlador.</p>`;
+            .join("") || `<p class="muted">${t("settings.noMidi")}</p>`
+        }</div><p class="muted">${t("settings.curveHint")}</p>`;
     if (active === "library")
       fields.innerHTML =
         title +
-        `<div class="settings-form"><label class="field">Carpetas de SoundFonts<textarea id="soundfont-paths" rows="5" spellcheck="false" placeholder="/ruta/a/soundfonts">${escape((libraryDraft ?? config.library.paths).join("\n"))}</textarea></label><p class="muted">Una carpeta o archivo SF2 por línea, en el servidor. Aplicar actualiza el catálogo y libera las notas activas.</p><button type="button" id="apply-library" ${busy ? "disabled" : ""}>Guardar carpetas</button><button type="button" id="refresh-library" ${busy ? "disabled" : ""}>Buscar SoundFonts</button></div>`;
+        `<div class="settings-form"><label class="field">${t("settings.folders")}<textarea id="soundfont-paths" rows="5" spellcheck="false" placeholder="${t("settings.path")}">${escape((libraryDraft ?? config.library.paths).join("\n"))}</textarea></label><p class="muted">${t("settings.libraryHint")}</p><button type="button" id="apply-library" ${busy ? "disabled" : ""}>${t("settings.saveFolders")}</button><button type="button" id="refresh-library" ${busy ? "disabled" : ""}>${t("settings.scan")}</button></div>`;
     bind();
   }
   function accept(message: SettingsMessage) {
@@ -197,6 +206,14 @@ export function initializeSettings(
     resources = message.resources;
     if (message.initialized) discardLegacyPreferences();
     onChange(sharedSettings);
+    setLanguage(sharedSettings.interface.language);
+    heading.textContent = t("nav.settings");
+    root.querySelector("#close-settings")!.textContent = t("nav.back");
+    root
+      .querySelector(".settings-nav")!
+      .setAttribute("aria-label", t("nav.settingsSections"));
+    for (const [key, label] of sections)
+      root.querySelector(`[data-section="${key}"]`)!.textContent = t(label);
     const focused = fields.contains(document.activeElement)
       ? (document.activeElement as HTMLElement).id
       : null;
@@ -219,16 +236,13 @@ export function initializeSettings(
           },
         );
         const message = await response.json();
-        if (!response.ok)
-          throw new Error(
-            message.detail ?? "No se pudo guardar la configuración.",
-          );
+        if (!response.ok) throw apiError(message.detail);
         accept(message);
-        status("Guardado en el servidor.");
+        status(t("settings.saved"));
       });
     pending = request;
     return request.catch((error) => {
-      status(error instanceof Error ? error.message : String(error), true);
+      status(errorText(error), true);
       render();
       throw error;
     });
@@ -239,12 +253,11 @@ export function initializeSettings(
   async function refreshAudio() {
     try {
       const response = await fetch("/api/settings?refresh=true");
-      if (!response.ok)
-        throw new Error("No se pudieron actualizar los dispositivos.");
+      if (!response.ok) throw new LocalizedError("errors.devicesRefresh");
       accept(await response.json());
       render();
     } catch (error) {
-      status(String(error), true);
+      status(errorText(error), true);
     }
   }
   async function applyAudio() {
@@ -274,16 +287,13 @@ export function initializeSettings(
           method: "POST",
         });
         const result = await response.json();
-        if (!response.ok)
-          throw new Error(
-            result.detail ?? "No se pudo actualizar el catálogo.",
-          );
+        if (!response.ok) throw apiError(result.detail);
         accept(result);
-        status("Catálogo actualizado.");
+        status(t("settings.catalogUpdated"));
       }
       libraryDraft = null;
     } catch (error) {
-      status(String(error), true);
+      status(errorText(error), true);
     } finally {
       busy = false;
       render();
@@ -295,8 +305,10 @@ export function initializeSettings(
       event: string,
       listener: (event: Event) => void,
     ) => fields.querySelector(`#${id}`)?.addEventListener(event, listener);
-    listen("interface-language", "change", () =>
-      save({ interface: { language: "es" } }),
+    listen("interface-language", "change", (event) =>
+      save({
+        interface: { language: (event.target as HTMLSelectElement).value },
+      }),
     );
     listen("interface-motion", "change", (event) =>
       save({

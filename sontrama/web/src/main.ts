@@ -1,3 +1,11 @@
+import {
+  t,
+  setLanguage,
+  issueText,
+  apiError,
+  errorText,
+  type TranslationKey,
+} from "./i18n";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import "./style.css";
@@ -19,15 +27,16 @@ import {
   type Snapshot,
 } from "./types";
 
+document.title = t("page.title");
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const audio = new BrowserInstrument();
 const tabs = [
-  ["inputs", "Entradas"],
-  ["instrument", "Instrumento"],
-  ["effects", "Efectos"],
-  ["mixer", "Mixer"],
-  ["output", "Salida"],
-];
+  ["inputs", "nav.inputs"],
+  ["instrument", "nav.instrument"],
+  ["effects", "nav.effects"],
+  ["mixer", "nav.mixer"],
+  ["output", "nav.output"],
+] as const;
 let snapshot: Snapshot | null = null;
 let socket: WebSocket | null = null;
 let reconnect: ReturnType<typeof setTimeout> | undefined;
@@ -57,18 +66,44 @@ const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
 
 app.innerHTML = `
   <main class="studio">
-    <header class="studio-header"><h1>Sontrama</h1><span class="live-tag">LIVE</span><div class="header-actions"><span id="connection" role="status">Conectando…</span><button type="button" id="open-settings" class="settings-trigger" aria-label="Configuración" title="Configuración" aria-controls="settings-view" aria-expanded="false">${settingsIcon}</button></div></header>
+    <header class="studio-header"><h1>Sontrama</h1><span class="live-tag">${t("common.live")}</span><div class="header-actions"><span id="connection" role="status">${t("connection.connecting")}</span><button type="button" id="open-settings" class="settings-trigger" aria-label="${t("nav.settings")}" title="${t("nav.settings")}" aria-controls="settings-view" aria-expanded="false">${settingsIcon}</button></div></header>
     <div id="live-view">
-    <nav class="studio-tabs" role="tablist" aria-label="Secciones de Live">${tabs.map(([key, name]) => `<button type="button" id="tab-${key}" role="tab" aria-controls="panel-${key}" data-tab="${key}" aria-selected="false">${name}</button>`).join("")}</nav>
+    <nav class="studio-tabs" role="tablist" aria-label="${t("nav.liveSections")}">${tabs.map(([key, name]) => `<button type="button" id="tab-${key}" role="tab" aria-controls="panel-${key}" data-tab="${key}" aria-selected="false">${t(name)}</button>`).join("")}</nav>
     <div id="notice" role="alert" hidden></div>
     <div class="workspace">${tabs.map(([key]) => `<section id="panel-${key}" class="pane" role="tabpanel" aria-labelledby="tab-${key}" hidden></section>`).join("")}</div>
-    <details class="keyboard-drawer" ${capturing ? "open" : ""}><summary>Teclado de prueba</summary><section class="keyboard-pane">
-      <div class="keyboard-head"><button id="capture-keyboard" type="button" aria-pressed="false">Capturar teclado</button></div>
-      <div class="piano" aria-label="Teclado de Do4 a La6"></div>
+    <details class="keyboard-drawer" ${capturing ? "open" : ""}><summary>${t("keyboard.title")}</summary><section class="keyboard-pane">
+      <div class="keyboard-head"><button id="capture-keyboard" type="button" aria-pressed="false">${t("keyboard.capture")}</button></div>
+      <div class="piano" aria-label="${t("keyboard.range")}"></div>
     </section></details>
     </div>
     ${settingsView()}
   </main>`;
+
+function stateLabel(state: string) {
+  const key = `state.${state}` as TranslationKey;
+  return ["ready", "disabled", "stopped", "unavailable"].includes(state)
+    ? t(key)
+    : t("state.unavailable");
+}
+function translateShell() {
+  document.title = t("page.title");
+  for (const [key, label] of tabs) $(`#tab-${key}`).textContent = t(label);
+  $(".studio-tabs").setAttribute("aria-label", t("nav.liveSections"));
+  const gear = $("#open-settings");
+  gear.setAttribute("aria-label", t("nav.settings"));
+  gear.title = t("nav.settings");
+  $(".live-tag").textContent = t("common.live");
+  $(".keyboard-drawer summary").textContent = t("keyboard.title");
+  $(".piano").setAttribute("aria-label", t("keyboard.range"));
+  $("#connection").textContent = t(
+    connected ? "connection.connected" : "connection.connecting",
+  );
+  notice();
+  render();
+  syncKeyboardButton();
+  updateKeyboardLabels();
+  updateHeld();
+}
 
 function notice(message = "") {
   $("#notice").textContent = message;
@@ -76,7 +111,7 @@ function notice(message = "") {
 }
 function fail(error: unknown) {
   console.error(error);
-  notice(error instanceof Error ? error.message : String(error));
+  notice(errorText(error));
 }
 function activate(tab: string, focus = false) {
   if (!tabs.some(([key]) => key === tab)) tab = "instrument";
@@ -114,7 +149,7 @@ app.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((button) => {
 });
 
 function meter(name: string) {
-  return `<div class="meter" role="meter" aria-label="Nivel ${name}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-meter="${name}"><span></span></div>`;
+  return `<div class="meter" role="meter" aria-label="${t("mixer.meter", { channel: name === "channel" ? t("mixer.channel") : t("common.master") })}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-meter="${name}"><span></span></div>`;
 }
 function render() {
   if (!snapshot) return;
@@ -123,51 +158,51 @@ function render() {
   const preset = font?.presets.find(
     (p) => p.bank === state.bank && p.program === state.program,
   );
-  $("#panel-inputs").innerHTML = `<h2>Entradas MIDI</h2><div class="block">
-    <div class="source"><button type="button" data-action="usb" aria-pressed="${state.usb_enabled}">MIDI del servidor</button><p class="muted">${snapshot.status.midi.length ? snapshot.status.midi.map(escape).join("<br>") : "Esperando un dispositivo USB MIDI…"}</p></div>
-    <label class="field">Canal de entrada<select data-field="midi_channel" aria-label="Canal MIDI"><option value="" ${selected(state.midi_channel === null)}>Todos los canales</option>${Array.from({ length: 16 }, (_, index) => `<option value="${index}" ${selected(state.midi_channel === index)}>${index + 1}</option>`).join("")}</select></label>
-    <div class="source"><strong>Teclado de computadora</strong><p class="muted">Pulsá «Capturar teclado» en el teclado de prueba.</p></div>
-    <div class="source"><strong>MIDI conectado a esta computadora</strong><p class="muted" id="browser-midi-status">${midiAccess ? [...midiAccess.inputs.values()].map((input) => escape(input.name)).join(" · ") || "Sin dispositivos" : "Acceso opcional desde el navegador."}</p><button type="button" data-action="browser-midi">Conectar MIDI del navegador</button></div>
-    <p class="route"><span class="route-chip">Entradas activas</span> → Instrumento 01</p></div>`;
+  $("#panel-inputs").innerHTML =
+    `<h2>${t("inputs.title")}</h2><div class="block">
+    <div class="source"><button type="button" data-action="usb" aria-pressed="${state.usb_enabled}">${t("inputs.server")}</button><p class="muted">${snapshot.status.midi.length ? snapshot.status.midi.map(escape).join("<br>") : t("inputs.waiting")}</p></div>
+    <label class="field">${t("inputs.channel")}<select data-field="midi_channel" aria-label="${t("inputs.midiChannel")}"><option value="" ${selected(state.midi_channel === null)}>${t("inputs.allChannels")}</option>${Array.from({ length: 16 }, (_, index) => `<option value="${index}" ${selected(state.midi_channel === index)}>${index + 1}</option>`).join("")}</select></label>
+    <div class="source"><strong>${t("inputs.computer")}</strong><p class="muted">${t("inputs.captureHint")}</p></div>
+    <div class="source"><strong>${t("inputs.browser")}</strong><p class="muted" id="browser-midi-status">${midiAccess ? [...midiAccess.inputs.values()].map((input) => escape(input.name)).join(" · ") || t("inputs.noDevices") : t("inputs.optional")}</p><button type="button" data-action="browser-midi">${t("inputs.connect")}</button></div>
+    <p class="route"><span class="route-chip">${t("inputs.active")}</span>${t("inputs.target")}</p></div>`;
   $("#panel-instrument").innerHTML =
-    `<div class="block instrument-block"><h2>Instrumento activo · 01</h2>
-    <label class="field instrument-field">Instrumento<select aria-label="Instrumento" data-field="instrument" class="instrument-select"><option value="banks" ${selected(state.instrument === "banks")}>Banks</option><option value="three-osc" ${selected(state.instrument === "three-osc")}>3 Osc</option></select></label>
-    <div class="instrument-options" role="group" aria-label="Opciones de ${state.instrument === "banks" ? "Banks" : "3 Osc"}">
+    `<div class="block instrument-block"><h2>${t("instrument.title")}</h2>
+    <label class="field instrument-field">${t("nav.instrument")}<select aria-label="${t("nav.instrument")}" data-field="instrument" class="instrument-select"><option value="banks" ${selected(state.instrument === "banks")}>${t("common.banks")}</option><option value="three-osc" ${selected(state.instrument === "three-osc")}>${t("common.threeOsc")}</option></select></label>
+    <div class="instrument-options" role="group" aria-label="${t("instrument.options", { instrument: state.instrument === "banks" ? t("common.banks") : t("common.threeOsc") })}">
     ${
       state.instrument === "banks"
-        ? `<label class="field preset-field">Sonido<select data-field="preset" aria-label="Sonido" ${font ? "" : "disabled"}>${font?.presets.map((p) => `<option value="${p.bank}:${p.program}" ${selected(p.bank === state.bank && p.program === state.program)}>${escape(p.name)} · ${p.bank}:${p.program}</option>`).join("") ?? "<option>Sin SoundFont</option>"}</select></label>
-    <label class="field bank-field">SoundFont<select data-field="soundfont" aria-label="SoundFont">${snapshot.catalog.map((bank) => `<option value="${bank.id}" ${selected(bank.id === state.soundfont)}>${escape(bank.name)}</option>`).join("") || "<option>No hay bancos instalados</option>"}</select></label>`
+        ? `<label class="field preset-field">${t("instrument.sound")}<select data-field="preset" aria-label="${t("instrument.sound")}" ${font ? "" : "disabled"}>${font?.presets.map((p) => `<option value="${p.bank}:${p.program}" ${selected(p.bank === state.bank && p.program === state.program)}>${escape(p.name)} · ${p.bank}:${p.program}</option>`).join("") ?? `<option>${t("instrument.noFont")}</option>`}</select></label>
+    <label class="field bank-field">${t("common.soundfont")}<select data-field="soundfont" aria-label="${t("common.soundfont")}">${snapshot.catalog.map((bank) => `<option value="${bank.id}" ${selected(bank.id === state.soundfont)}>${escape(bank.name)}</option>`).join("") || `<option>${t("instrument.noBanks")}</option>`}</select></label>`
         : threeOscPanel(state.three_osc)
     }
-    <div class="instrument-controls"><label class="field">Octava<select data-field="octave" aria-label="Octava">${[-2, -1, 0, 1, 2].map((value) => `<option ${selected(value === state.octave)} value="${value}">${value > 0 ? "+" : ""}${value}</option>`).join("")}</select></label><div class="field">Sustain<button type="button" data-action="sustain" aria-pressed="${state.sustain}">CC64</button></div></div></div>
-    <p class="route"><span class="route-chip">Salida de audio</span> → Canal 01</p>
+    <div class="instrument-controls"><label class="field">${t("instrument.octave")}<select data-field="octave" aria-label="${t("instrument.octave")}">${[-2, -1, 0, 1, 2].map((value) => `<option ${selected(value === state.octave)} value="${value}">${value > 0 ? "+" : ""}${value}</option>`).join("")}</select></label><div class="field">${t("common.sustain")}<button type="button" data-action="sustain" aria-pressed="${state.sustain}">${t("common.cc64")}</button></div></div></div>
+    <p class="route"><span class="route-chip">${t("common.audioOutput")}</span>${t("instrument.channel")}</p>
     </div>`;
   $("#panel-effects").innerHTML =
-    `<div class="panel-heading"><h2>Efectos · canal 01</h2><span class="muted">En serie ↓</span></div><div class="effects-list">${
+    `<div class="panel-heading"><h2>${t("fx.title")}</h2><span class="muted">${t("fx.serial")}</span></div><div class="effects-list">${
       state.effects
         .map((effect, index) => {
           const info = effectInfo[effect.kind];
-          return `<section class="effect ${effect.enabled ? "" : "bypassed"}" data-effect="${effect.id}"><div class="effect-top"><button type="button" data-fx-enabled="${effect.id}" aria-pressed="${effect.enabled}">${info.name}</button><button type="button" data-fx-move="${effect.id}" data-direction="-1" aria-label="Subir ${info.name}" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" data-fx-move="${effect.id}" data-direction="1" aria-label="Bajar ${info.name}" ${index === state.effects.length - 1 ? "disabled" : ""}>↓</button><button type="button" data-fx-remove="${effect.id}" aria-label="Quitar ${info.name}">×</button></div><label class="range-label">${info.label}<output>${info.format(effect.value)}</output><input type="range" data-fx-value="${effect.id}" data-kind="${effect.kind}" aria-label="${info.label} ${info.name}" min="${info.min}" max="${info.max}" step="${info.step}" value="${effect.value}"></label></section>`;
+          return `<section class="effect ${effect.enabled ? "" : "bypassed"}" data-effect="${effect.id}"><div class="effect-top"><button type="button" data-fx-enabled="${effect.id}" aria-pressed="${effect.enabled}">${info.name}</button><button type="button" data-fx-move="${effect.id}" data-direction="-1" aria-label="${t("fx.up", { effect: info.name })}" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" data-fx-move="${effect.id}" data-direction="1" aria-label="${t("fx.down", { effect: info.name })}" ${index === state.effects.length - 1 ? "disabled" : ""}>↓</button><button type="button" data-fx-remove="${effect.id}" aria-label="${t("fx.remove", { effect: info.name })}">×</button></div><label class="range-label">${info.label}<output>${info.format(effect.value)}</output><input type="range" data-fx-value="${effect.id}" data-kind="${effect.kind}" aria-label="${t("fx.parameter", { parameter: info.label, effect: info.name })}" min="${info.min}" max="${info.max}" step="${info.step}" value="${effect.value}"></label></section>`;
         })
-        .join("") ||
-      '<p class="muted">Sin efectos. El audio pasa directamente al mixer.</p>'
-    }</div><label class="field add-effect">Añadir efecto<select data-field="add-effect" aria-label="Añadir efecto" ${state.effects.length >= 8 ? "disabled" : ""}><option value="">Elegir efecto…</option>${Object.entries(
+        .join("") || `<p class="muted">${t("fx.empty")}</p>`
+    }</div><label class="field add-effect">${t("fx.add")}<select data-field="add-effect" aria-label="${t("fx.add")}" ${state.effects.length >= 8 ? "disabled" : ""}><option value="">${t("fx.choose")}</option>${Object.entries(
       effectInfo,
     )
       .map(([key, info]) => `<option value="${key}">${info.name}</option>`)
       .join("")}</select></label>`;
   $("#panel-mixer").innerHTML =
-    `<h2>Mixer</h2><div class="mixer"><section class="block strip"><div class="strip-head"><h3>01</h3><span>${escape(state.instrument === "banks" ? (preset?.name ?? "Banks") : "3 Osc")}</span></div>${meter("channel")}<div class="strip-controls"><button type="button" data-action="mute" aria-pressed="${state.mute}">Mute</button><button type="button" data-action="solo" aria-pressed="${state.solo}">Solo</button></div><label class="range-label">Nivel<output>${Math.round(state.volume * 100)}%</output><input type="range" data-field="volume" min="0" max="1" step=".01" value="${state.volume}" aria-label="Volumen de canal 01"></label><p class="muted">Salida → Master</p></section><section class="block strip"><div class="strip-head"><h3>Master</h3></div>${meter("master")}<p class="muted solo-hint">Un canal activo${state.solo ? " · Solo" : ""}</p><label class="range-label">Nivel<output>${Math.round(state.master * 100)}%</output><input type="range" data-field="master" min="0" max="1" step=".01" value="${state.master}" aria-label="Volumen master"></label><p class="muted">Salida del servidor</p></section></div>`;
+    `<h2>${t("nav.mixer")}</h2><div class="mixer"><section class="block strip"><div class="strip-head"><h3>01</h3><span>${escape(state.instrument === "banks" ? (preset?.name ?? t("common.banks")) : t("common.threeOsc"))}</span></div>${meter("channel")}<div class="strip-controls"><button type="button" data-action="mute" aria-pressed="${state.mute}">${t("common.mute")}</button><button type="button" data-action="solo" aria-pressed="${state.solo}">${t("common.solo")}</button></div><label class="range-label">${t("common.level")}<output>${Math.round(state.volume * 100)}%</output><input type="range" data-field="volume" min="0" max="1" step=".01" value="${state.volume}" aria-label="${t("mixer.volume")}"></label><p class="muted">${t("mixer.route")}</p></section><section class="block strip"><div class="strip-head"><h3>${t("common.master")}</h3></div>${meter("master")}<p class="muted solo-hint">${t("mixer.active")}${state.solo ? ` · ${t("common.solo")}` : ""}</p><label class="range-label">${t("common.level")}<output>${Math.round(state.master * 100)}%</output><input type="range" data-field="master" min="0" max="1" step=".01" value="${state.master}" aria-label="${t("mixer.masterVolume")}"></label><p class="muted">${t("output.server")}</p></section></div>`;
   $("#panel-output").innerHTML =
-    `<h2>Salida de audio</h2><div class="output-sections"><section class="block"><h3>Salida principal</h3><p>Servidor · salida de audio</p><p class="muted">Sigue sonando aunque cierres el navegador.</p><div class="signal-path">MIDI → ${state.instrument === "banks" ? "Banks" : "3 Osc"} → ${
+    `<h2>${t("common.audioOutput")}</h2><div class="output-sections"><section class="block"><h3>${t("output.main")}</h3><p>${t("output.serverAudio")}</p><p class="muted">${t("output.background")}</p><div class="signal-path">MIDI → ${state.instrument === "banks" ? t("common.banks") : t("common.threeOsc")} → ${
       state.effects
         .filter((effect) => effect.enabled)
         .map((effect) => effectInfo[effect.kind].name)
         .join(" → ") +
       (state.effects.some((effect) => effect.enabled) ? " → " : "")
-    }Canal 01 → Master → Salida del servidor</div><p class="muted">Motor: ${escape(snapshot.status.engine)} · Audio: ${escape(snapshot.status.audio)}</p><p class="muted">Cortes de audio detectados: <span id="underruns">${snapshot.status.underruns}</span></p></section><section class="block"><h3>Preview en navegador</h3><p class="muted">Escuchá una copia del audio acá, sin cambiar la salida principal.</p><button type="button" id="browser-preview" data-action="preview" aria-pressed="${previewEnabled}">Activar preview</button></section></div>`;
+    }${t("output.route")}</div><p class="muted">${t("output.engine", { engine: stateLabel(snapshot.status.engine), audio: stateLabel(snapshot.status.audio) })}</p><p class="muted">${t("output.underruns")} <span id="underruns">${snapshot.status.underruns}</span></p></section><section class="block"><h3>${t("output.preview")}</h3><p class="muted">${t("output.previewHint")}</p><button type="button" id="browser-preview" data-action="preview" aria-pressed="${previewEnabled}">${t("output.activate")}</button></section></div>`;
   syncPreviewButton();
-  const serverError = snapshot.status.errors.join(" · ");
+  const serverError = (snapshot.status.issues ?? []).map(issueText).join(" · ");
   if (serverError) notice(serverError);
   else if (lastServerError && $("#notice").textContent === lastServerError)
     notice();
@@ -209,7 +244,7 @@ function patch(
       });
       if (!response.ok) {
         const body = await response.json();
-        throw new Error(body.detail ?? "No se pudo guardar.");
+        throw apiError(body.detail);
       }
       notice();
       accept(await response.json());
@@ -224,7 +259,9 @@ function patch(
 function syncKeyboardButton() {
   const button = $<HTMLButtonElement>("#capture-keyboard");
   button.setAttribute("aria-pressed", String(capturing));
-  button.textContent = capturing ? "Teclado capturado" : "Capturar teclado";
+  button.textContent = capturing
+    ? t("keyboard.captured")
+    : t("keyboard.capture");
 }
 function syncPreviewButton() {
   const button = app.querySelector<HTMLButtonElement>("#browser-preview");
@@ -233,12 +270,12 @@ function syncPreviewButton() {
   button.setAttribute("aria-pressed", String(previewEnabled));
   button.setAttribute("aria-busy", String(starting));
   button.textContent = starting
-    ? "Cargando preview…"
+    ? t("output.loading")
     : previewEnabled
       ? audio.context?.state === "suspended"
-        ? "Reactivar preview"
-        : "Preview activado"
-      : "Activar preview";
+        ? t("output.resume")
+        : t("output.enabled")
+      : t("output.activate");
 }
 async function setPreview(enabled: boolean, automatic = false, persist = true) {
   if (!snapshot || starting) return;
@@ -486,7 +523,7 @@ app.addEventListener("keydown", (event) => {
 function send(data: number[], controller?: string) {
   if (socket?.readyState === WebSocket.OPEN)
     socket.send(JSON.stringify({ type: "midi", data, controller }));
-  else notice("Sin conexión con el servidor.");
+  else notice(t("errors.disconnected"));
 }
 function updateHeld() {
   const notes = new Set([
@@ -578,20 +615,7 @@ const keyNotes = Object.fromEntries(
 const labels: Record<number, string> = {};
 for (const [, note, label] of mapping)
   labels[note] = labels[note] ? `${labels[note]} · ${label}` : label;
-const noteNames = [
-  "Do",
-  "Do♯",
-  "Re",
-  "Re♯",
-  "Mi",
-  "Fa",
-  "Fa♯",
-  "Sol",
-  "Sol♯",
-  "La",
-  "La♯",
-  "Si",
-];
+const noteNames = () => t("notes.names").split("|");
 for (let octave = 0; octave < 3; octave++) {
   for (const offset of [0, 2, 4, 5, 7, 9, 11]) {
     const note = 60 + octave * 12 + offset;
@@ -618,7 +642,7 @@ function addKey(note: number, className: string, left?: number) {
   button.type = "button";
   button.className = className;
   button.dataset.note = String(note);
-  const name = `${noteNames[note % 12]}${Math.floor(note / 12) - 1}`;
+  const name = `${noteNames()[note % 12]}${Math.floor(note / 12) - 1}`;
   button.setAttribute("aria-label", name);
   button.innerHTML = `<span></span>`;
   if (left !== undefined)
@@ -704,9 +728,7 @@ $(".keyboard-drawer").addEventListener("toggle", () => {
 
 async function connectMidi() {
   if (!navigator.requestMIDIAccess) {
-    notice(
-      "Web MIDI requiere un navegador compatible y HTTPS o localhost. El MIDI USB del servidor funciona sin Web MIDI.",
-    );
+    notice(t("errors.webMidi"));
     return;
   }
   try {
@@ -724,7 +746,7 @@ async function connectMidi() {
         label.textContent =
           [...midiAccess!.inputs.values()]
             .map((input) => input.name)
-            .join(" · ") || "Sin dispositivos";
+            .join(" · ") || t("inputs.noDevices");
       reportMidiDevices();
     };
     midiAccess.onstatechange = wire;
@@ -741,7 +763,7 @@ function connect() {
   );
   socket.onopen = () => {
     connected = true;
-    $("#connection").textContent = "Conectado";
+    $("#connection").textContent = t("connection.connected");
     $("#connection").className = "connected";
     notice();
     reportMidiDevices();
@@ -758,7 +780,7 @@ function connect() {
       held.clear();
       incomingNotes.clear();
       updateHeld();
-    } else if (message.type === "error") notice(message.message);
+    } else if (message.type === "error") notice(issueText(message));
     else if (message.type === "meters" && !(audio.ready && previewEnabled))
       updateMeters(message.channel, message.master);
     if (message.underruns !== undefined && app.querySelector("#underruns"))
@@ -770,7 +792,7 @@ function connect() {
     releaseAll();
     updateHeld();
     audio.panic();
-    $("#connection").textContent = "Desconectado · reintentando…";
+    $("#connection").textContent = t("connection.reconnecting");
     $("#connection").className = "";
     reconnect = setTimeout(connect, 1500);
   };
@@ -822,7 +844,7 @@ function updateKeyboardLabels() {
   const mode = sharedSettings.keyboard.labels;
   app.querySelectorAll<HTMLButtonElement>("[data-note]").forEach((button) => {
     const note = Number(button.dataset.note);
-    const name = `${noteNames[note % 12]}${Math.floor(note / 12) - 1}`;
+    const name = `${noteNames()[note % 12]}${Math.floor(note / 12) - 1}`;
     const text =
       mode === "none"
         ? ""
@@ -831,6 +853,7 @@ function updateKeyboardLabels() {
           : mode === "both"
             ? `${name}${labels[note] ? " · " + labels[note] : ""}`
             : `${note % 12 === 0 ? name + " · " : ""}${labels[note] ?? ""}`;
+    button.setAttribute("aria-label", name);
     button.querySelector("span")!.textContent = text;
   });
 }
@@ -842,7 +865,7 @@ settingsController = initializeSettings(
     $("#live-view").hidden = open;
   },
   (configuration) => {
-    document.documentElement.lang = configuration.interface.language;
+    if (setLanguage(configuration.interface.language)) translateShell();
     document.documentElement.dataset.motion = configuration.interface.motion;
     if (capturing && !configuration.keyboard.capture)
       for (const id of [...held.keys()]) noteOff(id);

@@ -44,6 +44,7 @@ test("settings preserves the Live session and pauses PC keyboard capture", async
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByLabel("Idioma").locator("option")).toHaveText([
     "Español",
+    "English",
   ]);
   await page.getByLabel("Idioma").selectOption("es");
   expect(

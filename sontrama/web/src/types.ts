@@ -1,3 +1,4 @@
+import { type ApiIssue, t } from "./i18n";
 export type EffectKind = "chorus" | "reverb" | "gain" | "filter";
 export interface Effect {
   id: string;
@@ -61,6 +62,7 @@ export interface Snapshot {
     audio: string;
     midi: string[];
     errors: string[];
+    issues?: ApiIssue[];
     underruns: number;
     catalog_revision?: number;
   };
@@ -78,8 +80,12 @@ export const effectInfo: Record<
   }
 > = {
   chorus: {
-    name: "Chorus",
-    label: "Mezcla",
+    get name() {
+      return t("common.chorus");
+    },
+    get label() {
+      return t("common.mix");
+    },
     min: 0,
     max: 1,
     step: 0.01,
@@ -87,8 +93,12 @@ export const effectInfo: Record<
     format: (v) => `${Math.round(v * 100)}%`,
   },
   reverb: {
-    name: "Reverb",
-    label: "Mezcla",
+    get name() {
+      return t("common.reverb");
+    },
+    get label() {
+      return t("common.mix");
+    },
     min: 0,
     max: 1,
     step: 0.01,
@@ -96,8 +106,12 @@ export const effectInfo: Record<
     format: (v) => `${Math.round(v * 100)}%`,
   },
   gain: {
-    name: "Gain",
-    label: "Ganancia",
+    get name() {
+      return t("common.gainName");
+    },
+    get label() {
+      return t("common.gain");
+    },
     min: -24,
     max: 12,
     step: 0.5,
@@ -105,8 +119,12 @@ export const effectInfo: Record<
     format: (v) => `${v > 0 ? "+" : ""}${v} dB`,
   },
   filter: {
-    name: "Filtro",
-    label: "Frecuencia de corte",
+    get name() {
+      return t("common.filter");
+    },
+    get label() {
+      return t("common.cutoff");
+    },
     min: 100,
     max: 18000,
     step: 100,
