@@ -451,25 +451,6 @@ h3 {
   margin-top: 24px;
   max-width: 320px;
 }
-.mixer {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-.strip-head {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.strip-head span {
-  font-size: 13px;
-}
-.strip-controls {
-  display: flex;
-  gap: 12px;
-  margin: 16px 0;
-}
 .meter {
   height: 10px;
   border: 2px solid var(--ink);
@@ -481,9 +462,6 @@ h3 {
   height: 100%;
   width: 0;
   background: var(--primary);
-}
-.solo-hint {
-  min-height: 43px;
 }
 .signal-path {
   font:
@@ -641,16 +619,13 @@ h3 {
   .block {
     padding: 16px;
   }
-  .mixer {
-    grid-template-columns: 1fr;
-  }
   .effect {
     padding: 12px;
   }
   .effect-top {
     flex-wrap: wrap;
   }
-  .effect-top button[data-fx-enabled] {
+  .effect-top button[data-mixer-enabled] {
     flex-basis: 100%;
   }
   .effect-top button {
@@ -709,7 +684,7 @@ button[aria-pressed] {
 button[aria-pressed="true"]:hover:not(:disabled) {
   background: var(--primary);
 }
-.effect-top button[data-fx-enabled] {
+.effect-top button[data-mixer-enabled] {
   margin-right: auto;
   padding: 8px 12px;
 }
@@ -822,4 +797,419 @@ button.waveform-button {
     flex-basis: 100%;
     order: 3;
   }
+}
+
+/* Channel summaries are selectable cards; quick toggles are sibling buttons. */
+.channel-selector {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 4px 8px 12px 4px;
+  margin: 20px -4px 16px;
+}
+.channel-card {
+  flex: 0 0 272px;
+  position: relative;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+button.channel-pick[aria-pressed] {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px 14px 78px;
+  box-shadow: 4px 4px #000;
+}
+.channel-pick[aria-pressed="true"] {
+  background: var(--primary);
+}
+.master-card .channel-pick {
+  background: #ffd6e1;
+}
+.master-card .channel-pick[aria-pressed="true"] {
+  background: #ff8fad;
+}
+.master-card .channel-pick:hover {
+  background: #ffb0c5;
+}
+.card-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.card-heading strong {
+  font-size: 15px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bus-number {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 2px solid #000;
+  background: var(--surface);
+  font:
+    12px "JetBrains Mono Variable",
+    monospace;
+}
+.selection-mark {
+  margin-left: auto;
+}
+.card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  font:
+    11px "JetBrains Mono Variable",
+    monospace;
+}
+.card-stats > span {
+  display: grid;
+  gap: 6px;
+}
+.card-stats small {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.card-stats b {
+  font-weight: 600;
+}
+.card-switches {
+  position: absolute;
+  bottom: 18px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  gap: 10px;
+  pointer-events: none;
+}
+.card-switches button {
+  pointer-events: auto;
+  font-size: 12px;
+  padding: 6px 12px;
+  min-height: 44px;
+  box-shadow: 2px 2px #000;
+}
+.master-card .card-switches button[aria-pressed="true"] {
+  background: #ff8fad;
+}
+.bus-meter {
+  display: grid;
+  grid-template-rows: 6px 6px;
+  gap: 4px;
+  margin: 0 0 14px;
+}
+.bus-meter .meter {
+  display: block;
+  margin: 0;
+  height: 6px;
+  border-width: 1px;
+  background: var(--surface);
+}
+.bus-meter .meter > span {
+  background: #000;
+  height: 100% !important;
+}
+.mixer-editor {
+  border: 3px solid #000;
+  background: var(--surface);
+  box-shadow: 6px 6px #000;
+  min-width: 0;
+}
+.bus-heading {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 3px solid #000;
+}
+.bus-heading h3 {
+  margin: 0;
+  font-size: 17px;
+}
+.bus-heading .muted {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+.master-editor .bus-heading {
+  background: #ffb0c5;
+}
+.mixer-chain {
+  padding: 16px;
+}
+.chain-caption {
+  margin: 0 0 16px;
+  font:
+    11px "JetBrains Mono Variable",
+    monospace;
+  text-transform: uppercase;
+}
+.mixer-editor .effect {
+  background: var(--workspace);
+}
+.mixer-editor .effect-top {
+  flex-wrap: nowrap;
+}
+.mixer-editor .effect-top > button {
+  flex-basis: auto;
+}
+.effect-tools {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.mixer-editor .add-effect {
+  margin-top: 16px;
+}
+.bus-controls {
+  padding: 16px;
+  border-top: 3px solid #000;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px;
+  gap: 24px;
+}
+.bus-ranges {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  min-width: 0;
+  align-content: start;
+}
+.bus-ranges .range-label {
+  margin-top: 0;
+}
+.bus-meter.vertical {
+  grid-template-rows: 1fr;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  height: 92px;
+}
+.bus-meter.vertical .meter {
+  height: 100%;
+  position: relative;
+  border-width: 2px;
+  background: var(--workspace);
+}
+.bus-meter.vertical .meter > span {
+  position: absolute;
+  bottom: 0;
+  width: 100% !important;
+  height: 0;
+  background: var(--primary);
+}
+.bus-meter.vertical .meter > span[style] {
+  height: var(--meter-height, 0%) !important;
+}
+.bus-route {
+  border-top: 2px solid #000;
+  padding: 12px 16px;
+  margin: 0;
+  font:
+    11px "JetBrains Mono Variable",
+    monospace;
+}
+@container (max-width: 600px) {
+  .channel-card {
+    flex-basis: 252px;
+  }
+  .mixer-chain,
+  .bus-heading,
+  .bus-controls {
+    padding: 12px;
+  }
+  .effect-tools {
+    gap: 6px;
+  }
+  .mixer-editor .effect-top {
+    gap: 6px;
+  }
+  .mixer-editor .effect-top button {
+    padding: 6px;
+    min-width: 36px;
+  }
+  .bus-ranges {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .bus-controls {
+    gap: 14px;
+  }
+  .bus-meter.vertical {
+    height: 130px;
+  }
+}
+@container (max-width: 400px) {
+  .studio-tabs button:last-child {
+    grid-column: auto;
+  }
+}
+
+.master-card button.channel-pick[aria-pressed="true"]:hover:not(:disabled),
+.master-card .card-switches button[aria-pressed="true"]:hover:not(:disabled) {
+  background: #ff8fad;
+}
+
+.chain-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.chain-heading .chain-caption {
+  margin: 0;
+}
+.chain-heading button {
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.effect-dialog {
+  width: min(560px, calc(100% - 32px));
+  max-height: calc(100dvh - 40px);
+  padding: 24px;
+  border: 3px solid var(--ink);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 8px 8px var(--ink);
+  overflow: auto;
+}
+.effect-dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+.effect-dialog-heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.effect-dialog-heading h2 {
+  margin: 0;
+  flex: 1;
+}
+.effect-dialog-heading button {
+  width: 44px;
+  padding: 6px;
+  font-size: 21px;
+}
+.effect-choices {
+  display: grid;
+  gap: 12px;
+}
+.effect-choices button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  text-align: left;
+}
+.effect-choices button > span:first-child {
+  display: grid;
+  gap: 6px;
+}
+.effect-choices small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.5;
+}
+@media (max-width: 400px) {
+  .effect-dialog {
+    padding: 16px;
+  }
+}
+
+.effect-parameters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px 24px;
+  margin-top: 20px;
+}
+.effect-parameters .range-label {
+  min-width: 0;
+  margin-top: 0;
+}
+.effect-choice-field {
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  min-width: 0;
+}
+.effect-choice-field select {
+  width: 100%;
+}
+@container (max-width: 700px) {
+  .effect-parameters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 16px;
+  }
+}
+@container (max-width: 400px) {
+  .effect-parameters {
+    grid-template-columns: 1fr;
+  }
+}
+
+.effect-control,
+.effect-choice-field {
+  position: relative;
+}
+.parameter-info {
+  display: inline-block;
+  max-width: calc(100% - 76px);
+  vertical-align: middle;
+}
+.effect-choice-field .parameter-info {
+  max-width: 100%;
+}
+.parameter-info summary {
+  cursor: pointer;
+  list-style: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding-block: 6px;
+}
+.parameter-info summary::-webkit-details-marker {
+  display: none;
+}
+.parameter-info summary > span {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--ink);
+  font:
+    10px "JetBrains Mono Variable",
+    monospace;
+}
+.parameter-info[open] summary > span {
+  background: var(--primary);
+}
+.parameter-info p {
+  position: absolute;
+  z-index: 5;
+  top: 44px;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  box-shadow: 4px 4px var(--ink);
+}
+.effect-control > output {
+  line-height: 44px;
 }

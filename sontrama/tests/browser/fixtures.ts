@@ -23,6 +23,11 @@ export const test = base.extend<{ sharedConfiguration: void }>({
             mute: false,
             volume: 0.78,
             master: 0.85,
+            pan: 0,
+            master_pan: 0,
+            master_mute: false,
+            master_solo: false,
+            master_effects: [],
             effects: [
               {
                 id: "browser-test-chorus",

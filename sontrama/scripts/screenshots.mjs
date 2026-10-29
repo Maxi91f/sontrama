@@ -92,6 +92,9 @@ try {
     await page
       .locator(":focus")
       .evaluateAll((elements) => elements.forEach((element) => element.blur()));
+    // Bounding boxes use viewport coordinates; reset scrolling before a page crop.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => new Promise(requestAnimationFrame));
     const box = await page.locator(".studio").boundingBox();
     await page.screenshot({
       style: captureStyle,
@@ -110,7 +113,7 @@ try {
     .selectOption("three-osc");
   await page.locator(".oscillator").nth(2).waitFor();
   await capture("three-osc.png");
-  await page.getByRole("tab", { name: "Effects", exact: true }).click();
+  await page.getByRole("tab", { name: "Mixer", exact: true }).click();
   await setDrawer(true);
   await page
     .getByRole("button", { name: "Capture keyboard", exact: true })
@@ -127,14 +130,16 @@ try {
   for (const key of ["z", "c", "b"]) await page.keyboard.up(key);
   await setDrawer(false);
 
+  await page.getByRole("button", { name: "Add effect", exact: true }).click();
   await page
-    .getByRole("combobox", { name: "Add effect", exact: true })
-    .selectOption("filter");
+    .getByRole("dialog")
+    .getByRole("button", { name: "Filter", exact: false })
+    .click();
   await page
     .getByRole("button", { name: "Remove Filter", exact: true })
     .waitFor();
   await waitForToast();
-  await page.locator("#panel-effects").screenshot({
+  await page.locator(".mixer-chain").screenshot({
     path: path.join(assets, "effects-chain.png"),
     style: captureStyle,
   });
@@ -147,6 +152,15 @@ try {
     .getByRole("button", { name: "Preview enabled", exact: true })
     .waitFor();
   await page.getByRole("tab", { name: "Mixer", exact: true }).click();
+  await page.getByRole("button", { name: "Edit Master", exact: true }).click();
+  for (const name of ["Compressor", "Limiter"]) {
+    await page.getByRole("button", { name: "Add effect", exact: true }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name, exact: false })
+      .click();
+    await page.getByRole("button", { name, exact: true }).waitFor();
+  }
   await page.evaluate(async () => {
     const socket = new WebSocket(
       `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`,
@@ -193,6 +207,9 @@ try {
     .locator("#panel-mixer")
     .screenshot({ path: path.join(assets, "mixer.png"), style: captureStyle });
   await chord([60, 64, 67], false);
+  await page
+    .getByRole("button", { name: "Edit Channel 01", exact: true })
+    .click();
   await page.getByRole("tab", { name: "Output", exact: true }).click();
   await page
     .getByRole("button", { name: "Preview enabled", exact: true })
@@ -200,7 +217,7 @@ try {
   await page
     .getByRole("button", { name: "Enable preview", exact: true })
     .waitFor();
-  await page.getByRole("tab", { name: "Effects", exact: true }).click();
+  await page.getByRole("tab", { name: "Mixer", exact: true }).click();
   await setDrawer(true);
   await waitForToast();
 

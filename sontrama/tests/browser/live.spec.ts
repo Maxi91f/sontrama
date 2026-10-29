@@ -28,13 +28,7 @@ test("live tabs, persisted controls, ordered effects and responsive geometry", a
     String(initial.session.usb_enabled),
   );
 
-  for (const name of [
-    "Entradas",
-    "Instrumento",
-    "Efectos",
-    "Mixer",
-    "Salida",
-  ]) {
+  for (const name of ["Entradas", "Instrumento", "Mixer", "Salida"]) {
     await page.getByRole("tab", { name, exact: true }).click();
     await expect(page.locator("[role=tabpanel]:visible")).toHaveCount(1);
   }
@@ -49,11 +43,11 @@ test("live tabs, persisted controls, ordered effects and responsive geometry", a
   await page.reload();
   await expect(page.getByLabel("Octava", { exact: true })).toHaveValue("1");
   await page.getByLabel("Octava", { exact: true }).selectOption("0");
-  await page.getByRole("tab", { name: "Efectos", exact: true }).click();
+  await page.getByRole("tab", { name: "Mixer", exact: true }).click();
   const effectToggle = page
     .locator(".effect")
     .first()
-    .locator("button[data-fx-enabled]");
+    .locator("button[data-mixer-enabled]");
   const originallyEnabled = initial.session.effects[0].enabled;
   await effectToggle.click();
   await expect(effectToggle).toHaveAttribute(
@@ -66,27 +60,31 @@ test("live tabs, persisted controls, ordered effects and responsive geometry", a
     String(originallyEnabled),
   );
 
-  await page.getByLabel("Añadir efecto", { exact: true }).selectOption("gain");
+  await page
+    .getByRole("button", { name: "Añadir efecto", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Ganancia", exact: false })
+    .click();
   await expect(page.locator(".effect")).toHaveCount(
     initial.session.effects.length + 1,
   );
-  await page.getByRole("button", { name: "Subir Gain", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Subir Ganancia", exact: true })
+    .click();
   await expect(
     page.locator(".effect").nth(initial.session.effects.length - 1),
-  ).toContainText("Gain");
-  await page.getByRole("button", { name: "Quitar Gain", exact: true }).click();
+  ).toContainText("Ganancia");
+  await page
+    .getByRole("button", { name: "Quitar Ganancia", exact: true })
+    .click();
   await expect(page.locator(".effect")).toHaveCount(
     initial.session.effects.length,
   );
   for (const width of [1440, 768, 320]) {
     await page.setViewportSize({ width, height: 1200 });
-    for (const name of [
-      "Entradas",
-      "Instrumento",
-      "Efectos",
-      "Mixer",
-      "Salida",
-    ]) {
+    for (const name of ["Entradas", "Instrumento", "Mixer", "Salida"]) {
       await page.getByRole("tab", { name, exact: true }).click();
       expect(
         await page.evaluate(

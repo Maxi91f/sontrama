@@ -61,6 +61,8 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
                     "type": "meters",
                     "channel": studio.levels[0],
                     "master": studio.levels[1],
+                    "channel_stereo": studio.stereo_levels[0],
+                    "master_stereo": studio.stereo_levels[1],
                     "underruns": studio.underruns,
                 }
             )

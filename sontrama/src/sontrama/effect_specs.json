@@ -1,0 +1,347 @@
+{
+  "gain": {
+    "primary": "gain",
+    "parameters": {
+      "gain": {
+        "type": "number",
+        "default": 0,
+        "min": -48,
+        "max": 24,
+        "step": 0.5,
+        "unit": "dB",
+        "scale": "linear"
+      },
+      "width": {
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 2,
+        "step": 0.01,
+        "unit": "%",
+        "scale": "linear"
+      }
+    }
+  },
+  "filter": {
+    "primary": "frequency",
+    "parameters": {
+      "type": {
+        "type": "choice",
+        "default": "lowpass",
+        "choices": [
+          "lowpass",
+          "highpass",
+          "bandpass",
+          "notch",
+          "peaking",
+          "lowshelf",
+          "highshelf"
+        ]
+      },
+      "frequency": {
+        "type": "number",
+        "default": 8000,
+        "min": 20,
+        "max": 20000,
+        "step": 1,
+        "unit": "Hz",
+        "scale": "log"
+      },
+      "q": {
+        "type": "number",
+        "default": 0.7071067811865476,
+        "min": 0.1,
+        "max": 20,
+        "step": 0.01,
+        "unit": "",
+        "scale": "linear"
+      },
+      "slope": {
+        "type": "choice",
+        "default": "12",
+        "choices": ["12", "24"]
+      },
+      "gain": {
+        "type": "number",
+        "default": 0,
+        "min": -24,
+        "max": 24,
+        "step": 0.5,
+        "unit": "dB",
+        "scale": "linear"
+      },
+      "mix": {
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "unit": "%",
+        "scale": "linear"
+      }
+    }
+  },
+  "chorus": {
+    "primary": "mix",
+    "parameters": {
+      "rate": {
+        "type": "number",
+        "default": 0.8,
+        "min": 0.05,
+        "max": 8,
+        "step": 0.01,
+        "unit": "Hz",
+        "scale": "log"
+      },
+      "depth": {
+        "type": "number",
+        "default": 5,
+        "min": 0,
+        "max": 20,
+        "step": 0.1,
+        "unit": "ms",
+        "scale": "linear"
+      },
+      "delay": {
+        "type": "number",
+        "default": 25,
+        "min": 2,
+        "max": 40,
+        "step": 0.1,
+        "unit": "ms",
+        "scale": "linear"
+      },
+      "spread": {
+        "type": "number",
+        "default": 90,
+        "min": 0,
+        "max": 180,
+        "step": 1,
+        "unit": "\u00b0",
+        "scale": "linear"
+      },
+      "feedback": {
+        "type": "number",
+        "default": 0,
+        "min": -0.85,
+        "max": 0.85,
+        "step": 0.01,
+        "unit": "%",
+        "scale": "linear"
+      },
+      "mix": {
+        "type": "number",
+        "default": 0.18,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "unit": "%",
+        "scale": "linear"
+      }
+    }
+  },
+  "reverb": {
+    "primary": "mix",
+    "parameters": {
+      "decay": {
+        "type": "number",
+        "default": 2.4,
+        "min": 0.2,
+        "max": 12,
+        "step": 0.1,
+        "unit": "s",
+        "scale": "linear"
+      },
+      "pre_delay": {
+        "type": "number",
+        "default": 20,
+        "min": 0,
+        "max": 200,
+        "step": 1,
+        "unit": "ms",
+        "scale": "linear"
+      },
+      "room": {
+        "type": "number",
+        "default": 0.5,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "unit": "%",
+        "scale": "linear"
+      },
+      "damping": {
+        "type": "number",
+        "default": 6000,
+        "min": 500,
+        "max": 18000,
+        "step": 1,
+        "unit": "Hz",
+        "scale": "log"
+      },
+      "diffusion": {
+        "type": "number",
+        "default": 0.7,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "unit": "%",
+        "scale": "linear"
+      },
+      "width": {
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 2,
+        "step": 0.01,
+        "unit": "%",
+        "scale": "linear"
+      },
+      "low_cut": {
+        "type": "number",
+        "default": 80,
+        "min": 20,
+        "max": 1000,
+        "step": 1,
+        "unit": "Hz",
+        "scale": "log"
+      },
+      "high_cut": {
+        "type": "number",
+        "default": 12000,
+        "min": 1000,
+        "max": 20000,
+        "step": 1,
+        "unit": "Hz",
+        "scale": "log"
+      },
+      "mix": {
+        "type": "number",
+        "default": 0.26,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "unit": "%",
+        "scale": "linear"
+      }
+    }
+  },
+  "compressor": {
+    "primary": "threshold",
+    "parameters": {
+      "threshold": {
+        "type": "number",
+        "default": -18,
+        "min": -60,
+        "max": 0,
+        "step": 0.5,
+        "unit": "dB",
+        "scale": "linear"
+      },
+      "ratio": {
+        "type": "number",
+        "default": 4,
+        "min": 1,
+        "max": 20,
+        "step": 0.1,
+        "unit": ":1",
+        "scale": "linear"
+      },
+      "attack": {
+        "type": "number",
+        "default": 10,
+        "min": 0.1,
+        "max": 100,
+        "step": 0.1,
+        "unit": "ms",
+        "scale": "log"
+      },
+      "release": {
+        "type": "number",
+        "default": 150,
+        "min": 10,
+        "max": 1000,
+        "step": 1,
+        "unit": "ms",
+        "scale": "log"
+      },
+      "knee": {
+        "type": "number",
+        "default": 6,
+        "min": 0,
+        "max": 24,
+        "step": 0.5,
+        "unit": "dB",
+        "scale": "linear"
+      },
+      "makeup": {
+        "type": "number",
+        "default": 0,
+        "min": -12,
+        "max": 24,
+        "step": 0.5,
+        "unit": "dB",
+        "scale": "linear"
+      },
+      "sidechain_hp": {
+        "type": "number",
+        "default": 20,
+        "min": 20,
+        "max": 1000,
+        "step": 1,
+        "unit": "Hz",
+        "scale": "log"
+      },
+      "mix": {
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "unit": "%",
+        "scale": "linear"
+      }
+    }
+  },
+  "limiter": {
+    "primary": "ceiling",
+    "parameters": {
+      "ceiling": {
+        "type": "number",
+        "default": -1,
+        "min": -12,
+        "max": 0,
+        "step": 0.1,
+        "unit": "dB",
+        "scale": "linear"
+      },
+      "drive": {
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 24,
+        "step": 0.5,
+        "unit": "dB",
+        "scale": "linear"
+      },
+      "release": {
+        "type": "number",
+        "default": 80,
+        "min": 5,
+        "max": 1000,
+        "step": 1,
+        "unit": "ms",
+        "scale": "log"
+      },
+      "lookahead": {
+        "type": "number",
+        "default": 3,
+        "min": 0,
+        "max": 10,
+        "step": 0.1,
+        "unit": "ms",
+        "scale": "linear"
+      }
+    }
+  }
+}

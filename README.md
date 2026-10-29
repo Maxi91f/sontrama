@@ -41,6 +41,7 @@ Each part has its own job; instruments and effects plug into shared contracts.
 
 For example, play SF2 SoundFonts with **Banks**, or build a sound with **3 Osc**.
 Add chorus for movement, reverb for space, or shape the result with gain and filtering.
+Control dynamics with a compressor and tame peaks with a limiter.
 See the [application guide](sontrama/README.md) for capabilities and requirements.
 
 ### Inside 3 Osc
@@ -49,12 +50,12 @@ See the [application guide](sontrama/README.md) for capabilities and requirement
 
 ### Shape and balance
 
-Chain effects to shape the sound, then balance the channel and master levels.
+Select a channel or Master, shape its effect chain, then adjust its level and pan.
 
 <table>
   <tr>
     <td width="50%" valign="top"><img src="docs/assets/effects-chain.png" width="440" alt="An effect chain with chorus, reverb and a low-pass filter"></td>
-    <td width="50%" valign="top"><img src="docs/assets/mixer.png" width="440" alt="Channel and master controls with live audio meters responding to a chord"></td>
+    <td width="50%" valign="top"><img src="docs/assets/mixer.png" width="440" alt="Master compressor and limiter editors, with channel selector cards and live stereo meters"></td>
   </tr>
 </table>
 

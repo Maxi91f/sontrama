@@ -49,10 +49,17 @@ Workspace-level setup, development and deployment scripts are documented in
 - **Instrument**: Banks (SF2 SoundFonts and their actual banks/presets) or
   3 Osc (three-oscillator synthesis without SoundFonts). Both support octave
   shifts, sustain CC64, modulation CC1, pitch bend and MIDI pressure.
-- **Effects**: chorus, reverb, gain and low-pass filtering in series.
-  Add, remove, bypass and reorder up to eight effects.
-- **Mixer**: channel 01 and Master, levels, meters, mute and solo. With only
-  one channel, Solo does not affect the sound; its state is saved for expansion.
+- **Mixer**: select Channel 01 or Master from compact cards showing stereo
+  meters, effect counts, volume and pan. Mute and Solo are the only editable
+  controls on each card; they do not change the selected channel. Master uses
+  a pink accent. One editor below contains the selected bus's ordered effects,
+  volume and stereo pan. Add, remove, bypass and reorder up to eight effects
+  per bus (chorus, reverb, gain, filter/EQ, compressor and limiter). The Add effect button
+  beside the chain heading opens a modal picker. Channel audio passes
+  through its effects and level/pan controls, then through Master effects and
+  Master level/pan controls. Master mute silences the final signal, including
+  effect tails. Solo states are saved; with one source and one output bus,
+  they do not change which sources are audible.
 - **Output**: the server's main output and browser audio preview.
   The server keeps playing when the page closes. Preview and keyboard capture
   preferences are shared across connected browsers. If autoplay is blocked, audio
@@ -65,6 +72,34 @@ connected to the same server. Preview does not reroute the server output.
 Web MIDI requires HTTPS or localhost and a compatible browser; USB MIDI on the
 Pi does not depend on Web MIDI. Over LAN HTTP, browser audio falls back to the
 main thread when AudioWorklet is unavailable; HTTPS enables AudioWorklet.
+
+## Effects
+
+Every channel and Master can host any of these effects, in any order:
+
+| Effect      | Controls                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Chorus      | Rate, modulation depth, base delay, stereo spread, feedback and Dry/Wet                                                   |
+| Reverb      | Decay, pre-delay, room size, damping frequency, diffusion, stereo width, low/high cuts and Dry/Wet                        |
+| Filter / EQ | Low-pass, high-pass, band-pass, notch, bell or low/high shelf; frequency, resonance, 12/24 dB slopes, EQ gain and Dry/Wet |
+| Gain        | Gain from −48 to +24 dB and stereo width                                                                                  |
+| Compressor  | Threshold, ratio, attack, release, soft knee, makeup gain, sidechain HPF and parallel Dry/Wet                             |
+| Limiter     | Peak ceiling, input gain, release and 0–10 ms lookahead                                                                   |
+
+Frequency and timing controls use logarithmic sliders where appropriate.
+Dry/Wet is 0% original signal and 100% processed signal. Click or tap a
+parameter name for an explanation; controls also expose the help to screen readers.
+EQ gain appears for bell and shelf types. Parameter edits preserve DSP state,
+including reverb/delay tails; bypassing, reordering or replacing the chain resets
+that bus. The compressor and limiter link their detectors across stereo channels.
+The limiter controls sample peaks at its own output; it is not a true-peak limiter.
+Each limiter adds its selected lookahead to the signal latency. Effects placed
+after it, stereo folding, or later gain changes can raise peaks again.
+
+Existing single-value sessions migrate automatically to full parameter sets.
+The legacy `value` field remains the primary parameter alias and takes precedence
+when supplied together with `parameters`. Upgraded chorus and reverb algorithms
+may sound different from older versions even with the same mix value.
 
 ## 3 Osc
 
@@ -108,7 +143,7 @@ To use other files or directories, edit **Settings → Library**.
 configuration has been saved. SoundFonts are excluded from Git.
 
 Session state is saved automatically with atomic replacement in
-`data/session.json`: preset, effects, levels, inputs, octave and output.
+`data/session.json`: preset, channel/Master effects, levels, pan, mute/solo, inputs, octave and output.
 Shared configuration is saved separately in `data/settings.json` (next to the
 configured session file). Updates are broadcast over WebSocket, so changes on
 the computer appear on a phone connected to the same server without reloading.
@@ -203,27 +238,34 @@ Input (USB MIDI / Web MIDI / keyboard)
 Instrument (Banks / 3 Osc)
           ↓ dry audio
 Effects / Mixer
-  EffectChain → Channel 01 → Master
+  Channel EffectChain → Channel level/pan → Master EffectChain → Master level/pan
           ↓
 Output (AudioOutput)
 ```
 
 `contracts.py` defines the Instrument, AudioEffect and AudioOutput contracts.
 `catalog.py` reads SF2 metadata independently of the synthesizer.
-`instruments.py` adapts FluidSynth; `effects.py` processes NumPy buffers
-separately; `three_osc.py` implements the three-oscillator instrument without
+`instruments.py` adapts FluidSynth; `effects.py` routes NumPy buffers through
+the stateful C kernel in `dsp/effects.c`; `three_osc.py` implements the three-oscillator instrument without
 FluidSynth; `runtime.py` coordinates MIDI, the mixer and PortAudio output.
 `app.py` exposes REST, WebSocket and static files.
 
 The TypeScript client selects an engine through the `VoiceEngine` contract:
 Banks uses FluidSynth WASM, while 3 Osc uses custom DSP. Both deliver dry audio
 to the same Web Audio effect chain and mixer, using session parameters.
-Effects have the same purpose and order in both environments, but are not
-guaranteed to produce identical samples in Web Audio and native processing.
+Effect ranges/defaults come from the shared `effect_specs.json` contract.
+The browser runs matching DSP in an AudioWorklet, or ScriptProcessor on HTTP
+without AudioWorklet support. Native C and JavaScript sample fixtures cover all
+six effects, filter modes, different block sizes and live edits. Instrument
+engines and sample rates remain independent, so whole-studio output can differ.
+A C compiler is required during installation/startup; the service installer
+precompiles both native kernels before enabling systemd. No compilation or
+buffer allocation happens inside the native effect processing loop.
 
 To add an instrument, implement Instrument and register its adapter.
-To add an effect, register its factory in EFFECTS and add the corresponding
-web adapter. This version has two instruments and one channel; it does not
+To add an effect, define its shared parameter contract, extend EffectSpec's
+kind union, implement the C/JavaScript processor branches, add localized names
+and labels, and extend the audio/parity tests. The picker/editor use the contract. This version has two instruments and one channel; it does not
 include a sequencer, patches, pads, recording or MIDI file playback.
 
 ## Validation

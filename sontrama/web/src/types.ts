@@ -1,10 +1,16 @@
-import { type ApiIssue, t } from "./i18n";
-export type EffectKind = "chorus" | "reverb" | "gain" | "filter";
+import { type ApiIssue, t, type TranslationKey } from "./i18n";
+import {
+  effectDefinitions,
+  formatParameter,
+  type EffectKind,
+} from "./effect-schema";
+export type { EffectKind } from "./effect-schema";
 export interface Effect {
   id: string;
   kind: EffectKind;
   enabled: boolean;
   value: number;
+  parameters?: Record<string, number | string | boolean>;
 }
 export type WaveShape =
   "sine" | "triangle" | "square" | "saw" | "rounded-saw" | "noise";
@@ -38,6 +44,11 @@ export interface Session {
   midi_channel: number | null;
   volume: number;
   master: number;
+  pan: number;
+  master_pan: number;
+  master_mute: boolean;
+  master_solo: boolean;
+  master_effects: Effect[];
   mute: boolean;
   solo: boolean;
   output: "device";
@@ -67,7 +78,37 @@ export interface Snapshot {
     catalog_revision?: number;
   };
 }
-export const effectInfo: Record<
+export const effectInfo = Object.fromEntries(
+  (
+    [
+      "chorus",
+      "reverb",
+      "filter",
+      "gain",
+      "compressor",
+      "limiter",
+    ] as EffectKind[]
+  ).map((kind) => {
+    const definition = effectDefinitions[kind];
+    const primary = definition.parameters[definition.primary];
+    return [
+      kind,
+      {
+        get name() {
+          return t(`fx.name.${kind}` as TranslationKey);
+        },
+        get label() {
+          return t(`fx.parameter.${definition.primary}` as TranslationKey);
+        },
+        min: primary.min!,
+        max: primary.max!,
+        step: primary.step!,
+        initial: Number(primary.default),
+        format: (value: number) => formatParameter(value, primary),
+      },
+    ];
+  }),
+) as Record<
   EffectKind,
   {
     name: string;
@@ -76,59 +117,6 @@ export const effectInfo: Record<
     max: number;
     step: number;
     initial: number;
-    format: (v: number) => string;
+    format(value: number): string;
   }
-> = {
-  chorus: {
-    get name() {
-      return t("common.chorus");
-    },
-    get label() {
-      return t("common.mix");
-    },
-    min: 0,
-    max: 1,
-    step: 0.01,
-    initial: 0.18,
-    format: (v) => `${Math.round(v * 100)}%`,
-  },
-  reverb: {
-    get name() {
-      return t("common.reverb");
-    },
-    get label() {
-      return t("common.mix");
-    },
-    min: 0,
-    max: 1,
-    step: 0.01,
-    initial: 0.26,
-    format: (v) => `${Math.round(v * 100)}%`,
-  },
-  gain: {
-    get name() {
-      return t("common.gainName");
-    },
-    get label() {
-      return t("common.gain");
-    },
-    min: -24,
-    max: 12,
-    step: 0.5,
-    initial: 0,
-    format: (v) => `${v > 0 ? "+" : ""}${v} dB`,
-  },
-  filter: {
-    get name() {
-      return t("common.filter");
-    },
-    get label() {
-      return t("common.cutoff");
-    },
-    min: 100,
-    max: 18000,
-    step: 100,
-    initial: 8000,
-    format: (v) => `${v} Hz`,
-  },
-};
+>;

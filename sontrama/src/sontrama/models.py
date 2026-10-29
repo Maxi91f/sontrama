@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .effect_parameters import EFFECT_SPECS, defaults
 
 
 class StrictModel(BaseModel):
@@ -15,15 +18,53 @@ class StrictModel(BaseModel):
 
 class EffectSpec(StrictModel):
     id: str = Field(default_factory=lambda: uuid4().hex, min_length=1, max_length=64)
-    kind: Literal["chorus", "reverb", "gain", "filter"]
+    kind: Literal["chorus", "reverb", "gain", "filter", "compressor", "limiter"]
     enabled: bool = True
-    value: float = 0.25
+    value: float = 0
+    parameters: dict[str, float | str | bool] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_parameters(cls, value):
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("kind"), str)
+            or value["kind"] not in EFFECT_SPECS
+        ):
+            return value
+        result = dict(value)
+        kind = result["kind"]
+        given = result.get("parameters", {})
+        if not isinstance(given, dict):
+            return result
+        parameters = defaults(kind) | given
+        primary = EFFECT_SPECS[kind]["primary"]
+        # Keep the legacy scalar authoritative when old API clients send it.
+        if "value" in result:
+            parameters[primary] = result["value"]
+        result["value"] = parameters[primary]
+        result["parameters"] = parameters
+        return result
 
     @model_validator(mode="after")
     def parameter_range(self):
-        low, high = {"gain": (-24, 12), "filter": (100, 18000)}.get(self.kind, (0, 1))
-        if not low <= self.value <= high:
-            raise ValueError(f"{self.kind}: value must be between {low} and {high}")
+        definitions = EFFECT_SPECS[self.kind]["parameters"]
+        if self.parameters.keys() != definitions.keys():
+            raise ValueError(f"Unknown parameters for {self.kind}")
+        for name, value in self.parameters.items():
+            definition = definitions[name]
+            if definition["type"] == "choice":
+                if value not in definition["choices"]:
+                    raise ValueError(f"{self.kind}.{name}: invalid choice")
+            elif (
+                isinstance(value, bool)
+                or not isinstance(value, (float, int))
+                or not math.isfinite(value)
+                or not definition["min"] <= value <= definition["max"]
+            ):
+                raise ValueError(
+                    f"{self.kind}.{name}: value must be between {definition['min']} and {definition['max']}"
+                )
         return self
 
 
@@ -83,6 +124,11 @@ class Session(StrictModel):
     midi_channel: int | None = Field(default=None, ge=0, le=15)
     volume: float = Field(default=0.78, ge=0, le=1)
     master: float = Field(default=0.85, ge=0, le=1)
+    pan: float = Field(default=0, ge=-1, le=1)
+    master_pan: float = Field(default=0, ge=-1, le=1)
+    master_mute: bool = False
+    master_solo: bool = False
+    master_effects: list[EffectSpec] = Field(default_factory=list, max_length=8)
     mute: bool = False
     solo: bool = False
     output: Literal["device"] = "device"
@@ -96,7 +142,8 @@ class Session(StrictModel):
 
     @model_validator(mode="after")
     def unique_effect_ids(self):
-        if len({effect.id for effect in self.effects}) != len(self.effects):
+        effects = self.effects + self.master_effects
+        if len({effect.id for effect in effects}) != len(effects):
             raise ValueError("Effect IDs must be unique")
         return self
 

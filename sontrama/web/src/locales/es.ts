@@ -1,4 +1,133 @@
 export default {
+  "fx.help.gain": "Sube o baja el nivel de la señal en decibeles.",
+  "fx.help.width":
+    "0% es mono, 100% conserva la imagen estéreo y valores mayores la amplían.",
+  "fx.help.type":
+    "Elige qué frecuencias recorta, realza o atenúa el filtro. Los filtros shelf actúan sobre todo lo que queda por encima o por debajo de su frecuencia.",
+  "fx.help.frequency":
+    "Define el corte de los filtros de paso o shelf, o la frecuencia central de los filtros de campana, pasa banda y rechaza banda.",
+  "fx.help.q":
+    "Un Q mayor hace más estrecha o más resonante la respuesta alrededor de la frecuencia elegida.",
+  "fx.help.slope":
+    "24 dB/oct produce una respuesta más pronunciada al encadenar dos etapas de filtrado.",
+  "fx.help.mix":
+    "0% reproduce solo la señal original (dry); 100% reproduce solo la señal procesada (wet).",
+  "fx.help.rate":
+    "Qué tan rápido se modula el retardo del chorus. Valores mayores producen un movimiento más rápido.",
+  "fx.help.depth":
+    "Cuánto varía el retardo del chorus alrededor de su valor base.",
+  "fx.help.delay":
+    "Tiempo de retardo base sobre el que actúa la modulación del chorus.",
+  "fx.help.spread":
+    "Diferencia de fase entre la modulación izquierda y derecha del chorus, en grados.",
+  "fx.help.feedback":
+    "Reenvía parte de la señal retardada al chorus. Los valores negativos invierten la señal que vuelve.",
+  "fx.help.decay":
+    "Define el tiempo nominal de caída de la reverberación. La amortiguación y los filtros también afectan la cola audible.",
+  "fx.help.pre_delay":
+    "Retardo antes de que la señal entre en la red de reverberación.",
+  "fx.help.room":
+    "Cambia los retardos internos para sugerir un espacio más pequeño o más grande.",
+  "fx.help.damping":
+    "Las frecuencias por encima de este punto se apagan más rápido dentro de la reverberación. Valores bajos oscurecen la cola.",
+  "fx.help.diffusion":
+    "Controla la dispersión de las reflexiones. Valores mayores hacen la cola más densa y suave.",
+  "fx.help.low_cut": "Recorta frecuencias graves de la señal reverberada.",
+  "fx.help.high_cut": "Recorta frecuencias agudas de la señal reverberada.",
+  "fx.help.threshold":
+    "Nivel a partir del cual el compresor reduce la ganancia. Knee puede hacer que la compresión comience gradualmente por debajo de ese punto.",
+  "fx.help.ratio":
+    "Cuánto se comprime por encima del umbral: 4:1 convierte 4 dB por encima del umbral en 1 dB.",
+  "fx.help.attack":
+    "Qué tan rápido aumenta la reducción de ganancia cuando la señal se hace más fuerte.",
+  "fx.help.release":
+    "Qué tan rápido se recupera la ganancia después de los picos. Tiempos mayores hacen la recuperación más lenta.",
+  "fx.help.knee":
+    "Hace más gradual la entrada de la compresión alrededor del umbral. 0 dB produce una transición brusca.",
+  "fx.help.makeup":
+    "Recupera nivel de salida después de comprimir; no cambia el umbral.",
+  "fx.help.sidechain_hp":
+    "Recorta graves solo del detector del compresor para que el bajo provoque menos compresión. No filtra la señal audible.",
+  "fx.help.ceiling":
+    "Nivel máximo de los picos de muestra a la salida del limitador. Otros efectos o ganancias posteriores pueden volver a elevarlo.",
+  "fx.help.drive":
+    "Sube el nivel de entrada antes de limitar. Más ganancia de entrada hace trabajar más al limitador.",
+  "fx.help.lookahead":
+    "Retarda el audio este tiempo para que el limitador pueda anticipar los picos. Agrega esa misma latencia.",
+
+  "fx.name.gain": "Ganancia",
+  "fx.name.filter": "Filtro",
+  "fx.name.chorus": "Chorus",
+  "fx.name.reverb": "Reverb",
+  "fx.name.compressor": "Compresor",
+  "fx.name.limiter": "Limitador",
+  "fx.parameter.gain": "Ganancia",
+  "fx.parameter.width": "Ancho estéreo",
+  "fx.parameter.type": "Tipo",
+  "fx.parameter.frequency": "Frecuencia",
+  "fx.parameter.q": "Resonancia (Q)",
+  "fx.parameter.slope": "Pendiente",
+  "fx.parameter.mix": "Original/Efecto",
+  "fx.parameter.rate": "Velocidad",
+  "fx.parameter.depth": "Profundidad",
+  "fx.parameter.delay": "Retardo",
+  "fx.parameter.spread": "Separación estéreo",
+  "fx.parameter.feedback": "Realimentación",
+  "fx.parameter.decay": "Tiempo de reverberación",
+  "fx.parameter.pre_delay": "Pre-delay",
+  "fx.parameter.room": "Tamaño de sala",
+  "fx.parameter.damping": "Frecuencia de amortiguación",
+  "fx.parameter.diffusion": "Difusión",
+  "fx.parameter.low_cut": "Corte de graves",
+  "fx.parameter.high_cut": "Corte de agudos",
+  "fx.parameter.threshold": "Umbral",
+  "fx.parameter.ratio": "Relación",
+  "fx.parameter.attack": "Ataque",
+  "fx.parameter.release": "Release",
+  "fx.parameter.knee": "Knee",
+  "fx.parameter.makeup": "Ganancia de compensación",
+  "fx.parameter.sidechain_hp": "Filtro de graves del detector",
+  "fx.parameter.ceiling": "Techo",
+  "fx.parameter.drive": "Ganancia de entrada",
+  "fx.parameter.lookahead": "Lookahead",
+  "fx.option.lowpass": "Pasa bajos",
+  "fx.option.highpass": "Pasa altos",
+  "fx.option.bandpass": "Pasa banda",
+  "fx.option.notch": "Rechaza banda",
+  "fx.option.peaking": "Campana",
+  "fx.option.lowshelf": "Low shelf",
+  "fx.option.highshelf": "High shelf",
+  "fx.option.12": "12 dB/oct",
+  "fx.option.24": "24 dB/oct",
+  "fx.description.compressor":
+    "Controlá la dinámica con compresión enlazada en estéreo.",
+  "fx.description.limiter": "Fijá un techo de picos con release y lookahead.",
+
+  "fx.close": "Cerrar",
+  "fx.description.chorus": "Agregá movimiento y amplitud al sonido.",
+  "fx.description.reverb": "Dale espacio y una cola de reverberación.",
+  "fx.description.gain": "Ajustá la ganancia de la señal.",
+  "fx.description.filter":
+    "Moldeá el espectro de frecuencias con filtros y ecualización.",
+
+  "mixer.channels": "Canales del mixer",
+  "mixer.center": "Centro",
+  "mixer.left": "{{amount}}% I",
+  "mixer.right": "{{amount}}% D",
+  "mixer.leftSide": "izquierda",
+  "mixer.rightSide": "derecha",
+  "mixer.stereoMeter": "Nivel {{channel}} · {{side}}",
+  "mixer.channelRoute": "Instrumento → Canal 01",
+  "mixer.masterRoute": "Canal 01 → Master",
+  "mixer.chain": "Cadena de efectos",
+  "mixer.empty": "Sin efectos. El audio pasa a los controles del canal.",
+  "mixer.panControl": "Paneo · {{channel}}",
+  "mixer.serverRoute": "Salida → Servidor",
+  "mixer.select": "Editar {{channel}}",
+  "mixer.summaryVolume": "Volumen",
+  "mixer.muteBus": "Mute · {{channel}}",
+  "mixer.soloBus": "Solo · {{channel}}",
+
   "page.title": "Sontrama · Live",
   "mixer.channel": "Canal 01",
   "errors.preset_unavailable":

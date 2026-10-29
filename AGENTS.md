@@ -28,7 +28,11 @@ labels exactly when referring to controls.
   in localStorage; do not add per-browser configuration profiles.
 - Use light cream backgrounds,
   yellow accents, black borders, square corners and hard shadows. Use two-state
-  buttons for toggles. Keep Inputs, Instrument, Effects, Mixer and Output in tabs.
+  buttons for toggles. Keep Inputs, Instrument, Mixer and Output in tabs. Mixer combines channel
+  selection, per-channel/master effects, pan, levels and stereo meters.
+- Effect parameter contracts live in `src/sontrama/effect_specs.json`. Keep the
+  native C and browser JavaScript effect processors aligned with audio parity tests.
+  Preserve DSP state on parameter edits and compile both kernels before systemd.
 - The audio callback must not wait on disk writes, network, builds or preset
   loading. Compile native code before starting the service.
 

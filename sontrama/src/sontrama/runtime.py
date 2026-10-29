@@ -11,7 +11,7 @@ import sounddevice as sd
 from .catalog import BankCatalog
 from .configuration import midi_device_id, resolve_audio_device
 from .contracts import AudioOutput, ConfigurableInstrument, Instrument, MidiSource
-from .effects import EffectChain
+from .effects import EffectChain, StereoPanner
 from .errors import ApplicationError, Diagnostic, error_detail
 from .instruments import instrument_factory as default_instrument_factory
 from .midi import RtMidiSource
@@ -120,10 +120,14 @@ class Studio:
         self.instrument: Instrument | None = None
         self.output: AudioOutput | None = None
         self.chain = EffectChain(self.state.effects, sample_rate)
+        self.master_chain = EffectChain(self.state.master_effects, sample_rate)
+        self.panner = StereoPanner(self.state.pan)
+        self.master_panner = StereoPanner(self.state.master_pan)
         self.router = MidiRouter(self._dispatch)
         self.emit: Callable[[dict], None] = lambda event: None
         self.status = {"engine": "stopped", "audio": "stopped", "midi": [], "errors": []}
         self.levels = [0.0, 0.0]
+        self.stereo_levels = [[0.0, 0.0], [0.0, 0.0]]
         self.underruns = 0
         self.midi_source: MidiSource | None = None
         self.pending_banks: dict[tuple[str, int], int] = {}
@@ -139,6 +143,9 @@ class Studio:
             self.catalog, self.sample_rate
         )
         self.chain = EffectChain(self.state.effects, self.sample_rate)
+        self.master_chain = EffectChain(self.state.master_effects, self.sample_rate)
+        self.panner = StereoPanner(self.state.pan)
+        self.master_panner = StereoPanner(self.state.master_pan)
 
     def start(self, audio=True, midi=True, device: str | None = None, block_size=256):
         self.audio_enabled = audio
@@ -231,6 +238,7 @@ class Studio:
             with self.lock:
                 previous = self.state
                 current_chain = self.chain
+                current_master_chain = self.master_chain
                 can_configure = isinstance(self.instrument, ConfigurableInstrument)
             candidate = Session.model_validate(previous.model_dump() | patch)
             if candidate.instrument == "banks" and candidate.soundfont:
@@ -249,9 +257,15 @@ class Studio:
             )
             new_chain = (
                 EffectChain(candidate.effects, self.sample_rate)
-                if reset or candidate.effects != previous.effects
+                if reset or not current_chain.matches(candidate.effects)
                 else current_chain
             )
+            new_master_chain = (
+                EffectChain(candidate.master_effects, self.sample_rate)
+                if reset or not current_master_chain.matches(candidate.master_effects)
+                else current_master_chain
+            )
+            panner, master_panner = StereoPanner(candidate.pan), StereoPanner(candidate.master_pan)
             config_changed = (
                 candidate.three_osc != previous.three_osc and candidate.instrument == "three-osc"
             )
@@ -287,7 +301,15 @@ class Studio:
                     self.instrument.midi([0xB0, 64, 127 if candidate.sustain else 0])
                 if config_changed and not replacement and can_configure:
                     self.instrument.configure(candidate.three_osc.model_dump())
-                self.chain = new_chain
+                if new_chain is current_chain and candidate.effects != previous.effects:
+                    new_chain.configure(candidate.effects)
+                if (
+                    new_master_chain is current_master_chain
+                    and candidate.master_effects != previous.master_effects
+                ):
+                    new_master_chain.configure(candidate.master_effects)
+                self.chain, self.master_chain = new_chain, new_master_chain
+                self.panner, self.master_panner = panner, master_panner
                 self.state = candidate
             if old:
                 old.close()
@@ -303,6 +325,7 @@ class Studio:
                 return
             old_catalog, old_rate = self.catalog, self.sample_rate
             old_factory, old_chain = self.instrument_factory, self.chain
+            old_master_chain = self.master_chain
             old_state, old_instrument = self.state, self.instrument
             old_device, old_block = self.device, self.block_size
             old_output = self.output
@@ -335,6 +358,7 @@ class Studio:
                 replacement = factory(next_state)
                 replacement.midi([0xB0, 64, 127 if next_state.sustain else 0])
             chain = EffectChain(next_state.effects, audio.sample_rate)
+            master_chain = EffectChain(next_state.master_effects, audio.sample_rate)
             new_output = None
             swapped = False
             state_saved = False
@@ -352,10 +376,12 @@ class Studio:
                 with self.lock:
                     self.catalog, self.sample_rate = next_catalog, audio.sample_rate
                     self.instrument_factory, self.chain = factory, chain
+                    self.master_chain = master_chain
                     self.state, self.instrument = next_state, replacement
                     self.device, self.block_size = audio.device, audio.block_size
                     self.router.reset()
                     self.levels = [0.0, 0.0]
+                    self.stereo_levels = [[0.0, 0.0], [0.0, 0.0]]
                     swapped = True
                 if audio_changed and self.audio_enabled:
                     device = (
@@ -379,6 +405,7 @@ class Studio:
                     with self.lock:
                         self.catalog, self.sample_rate = old_catalog, old_rate
                         self.instrument_factory, self.chain = old_factory, old_chain
+                        self.master_chain = old_master_chain
                         self.state, self.instrument = old_state, old_instrument
                         self.device, self.block_size = old_device, old_block
                         self.router.reset()
@@ -512,19 +539,26 @@ class Studio:
                 self.instrument.midi([0xB0, 64, 127 if self.state.sustain else 0])
             self.router.reset()
             self.chain = EffectChain(self.state.effects, self.sample_rate)
+            self.master_chain = EffectChain(self.state.master_effects, self.sample_rate)
             self.emit({"type": "panic"})
 
     def render(self, frames: int):
         with self.lock:
             if not self.instrument or self.state.output != "device":
                 self.levels = [0, 0]
+                self.stereo_levels = [[0.0, 0.0], [0.0, 0.0]]
                 return np.zeros((frames, 2), dtype=np.float32)
             block = self.instrument.render(frames)
             block = self.chain.process(block)
+            block = self.panner.process(block)
             block *= 0 if self.state.mute else self.state.volume
-            channel_level = float(np.max(np.abs(block)))
-            block *= self.state.master
-            self.levels = [min(1, channel_level), min(1, float(np.max(np.abs(block))))]
+            channel_levels = np.minimum(1, np.max(np.abs(block), axis=0)).tolist()
+            block = self.master_chain.process(block)
+            block = self.master_panner.process(block)
+            block *= 0 if self.state.master_mute else self.state.master
+            master_levels = np.minimum(1, np.max(np.abs(block), axis=0)).tolist()
+            self.stereo_levels = [channel_levels, master_levels]
+            self.levels = [max(channel_levels), max(master_levels)]
             return np.clip(block, -1, 1)
 
     def _audio_callback(self, outdata, frames, timing, status):

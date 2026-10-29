@@ -9,6 +9,7 @@ import {
 import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import "./style.css";
+import { MixerView } from "./mixer";
 import { BrowserInstrument } from "./audio";
 import { threeOscPanel } from "./three-osc-panel";
 import { waveforms } from "./waveform-picker";
@@ -20,12 +21,7 @@ import {
   sharedSettings,
   type SettingsController,
 } from "./settings";
-import {
-  effectInfo,
-  type EffectKind,
-  type Session,
-  type Snapshot,
-} from "./types";
+import { effectInfo, type Session, type Snapshot } from "./types";
 
 document.title = t("page.title");
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -33,7 +29,6 @@ const audio = new BrowserInstrument();
 const tabs = [
   ["inputs", "nav.inputs"],
   ["instrument", "nav.instrument"],
-  ["effects", "nav.effects"],
   ["mixer", "nav.mixer"],
   ["output", "nav.output"],
 ] as const;
@@ -105,6 +100,8 @@ function translateShell() {
   updateHeld();
 }
 
+const mixer = new MixerView($("#panel-mixer"), patch);
+
 function notice(message = "") {
   $("#notice").textContent = message;
   $("#notice").hidden = !message;
@@ -114,6 +111,7 @@ function fail(error: unknown) {
   notice(errorText(error));
 }
 function activate(tab: string, focus = false) {
+  if (tab === "effects") tab = "mixer";
   if (!tabs.some(([key]) => key === tab)) tab = "instrument";
   selectedTab = tab;
   savePreferences({ tab });
@@ -148,9 +146,6 @@ app.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((button) => {
   });
 });
 
-function meter(name: string) {
-  return `<div class="meter" role="meter" aria-label="${t("mixer.meter", { channel: name === "channel" ? t("mixer.channel") : t("common.master") })}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-meter="${name}"><span></span></div>`;
-}
 function render() {
   if (!snapshot) return;
   const state = snapshot.session;
@@ -178,21 +173,12 @@ function render() {
     <div class="instrument-controls"><label class="field">${t("instrument.octave")}<select data-field="octave" aria-label="${t("instrument.octave")}">${[-2, -1, 0, 1, 2].map((value) => `<option ${selected(value === state.octave)} value="${value}">${value > 0 ? "+" : ""}${value}</option>`).join("")}</select></label><div class="field">${t("common.sustain")}<button type="button" data-action="sustain" aria-pressed="${state.sustain}">${t("common.cc64")}</button></div></div></div>
     <p class="route"><span class="route-chip">${t("common.audioOutput")}</span>${t("instrument.channel")}</p>
     </div>`;
-  $("#panel-effects").innerHTML =
-    `<div class="panel-heading"><h2>${t("fx.title")}</h2><span class="muted">${t("fx.serial")}</span></div><div class="effects-list">${
-      state.effects
-        .map((effect, index) => {
-          const info = effectInfo[effect.kind];
-          return `<section class="effect ${effect.enabled ? "" : "bypassed"}" data-effect="${effect.id}"><div class="effect-top"><button type="button" data-fx-enabled="${effect.id}" aria-pressed="${effect.enabled}">${info.name}</button><button type="button" data-fx-move="${effect.id}" data-direction="-1" aria-label="${t("fx.up", { effect: info.name })}" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" data-fx-move="${effect.id}" data-direction="1" aria-label="${t("fx.down", { effect: info.name })}" ${index === state.effects.length - 1 ? "disabled" : ""}>↓</button><button type="button" data-fx-remove="${effect.id}" aria-label="${t("fx.remove", { effect: info.name })}">×</button></div><label class="range-label">${info.label}<output>${info.format(effect.value)}</output><input type="range" data-fx-value="${effect.id}" data-kind="${effect.kind}" aria-label="${t("fx.parameter", { parameter: info.label, effect: info.name })}" min="${info.min}" max="${info.max}" step="${info.step}" value="${effect.value}"></label></section>`;
-        })
-        .join("") || `<p class="muted">${t("fx.empty")}</p>`
-    }</div><label class="field add-effect">${t("fx.add")}<select data-field="add-effect" aria-label="${t("fx.add")}" ${state.effects.length >= 8 ? "disabled" : ""}><option value="">${t("fx.choose")}</option>${Object.entries(
-      effectInfo,
-    )
-      .map(([key, info]) => `<option value="${key}">${info.name}</option>`)
-      .join("")}</select></label>`;
-  $("#panel-mixer").innerHTML =
-    `<h2>${t("nav.mixer")}</h2><div class="mixer"><section class="block strip"><div class="strip-head"><h3>01</h3><span>${escape(state.instrument === "banks" ? (preset?.name ?? t("common.banks")) : t("common.threeOsc"))}</span></div>${meter("channel")}<div class="strip-controls"><button type="button" data-action="mute" aria-pressed="${state.mute}">${t("common.mute")}</button><button type="button" data-action="solo" aria-pressed="${state.solo}">${t("common.solo")}</button></div><label class="range-label">${t("common.level")}<output>${Math.round(state.volume * 100)}%</output><input type="range" data-field="volume" min="0" max="1" step=".01" value="${state.volume}" aria-label="${t("mixer.volume")}"></label><p class="muted">${t("mixer.route")}</p></section><section class="block strip"><div class="strip-head"><h3>${t("common.master")}</h3></div>${meter("master")}<p class="muted solo-hint">${t("mixer.active")}${state.solo ? ` · ${t("common.solo")}` : ""}</p><label class="range-label">${t("common.level")}<output>${Math.round(state.master * 100)}%</output><input type="range" data-field="master" min="0" max="1" step=".01" value="${state.master}" aria-label="${t("mixer.masterVolume")}"></label><p class="muted">${t("output.server")}</p></section></div>`;
+  mixer.render(
+    state,
+    state.instrument === "banks"
+      ? (preset?.name ?? t("common.banks"))
+      : t("common.threeOsc"),
+  );
   $("#panel-output").innerHTML =
     `<h2>${t("common.audioOutput")}</h2><div class="output-sections"><section class="block"><h3>${t("output.main")}</h3><p>${t("output.serverAudio")}</p><p class="muted">${t("output.background")}</p><div class="signal-path">MIDI → ${state.instrument === "banks" ? t("common.banks") : t("common.threeOsc")} → ${
       state.effects
@@ -200,7 +186,12 @@ function render() {
         .map((effect) => effectInfo[effect.kind].name)
         .join(" → ") +
       (state.effects.some((effect) => effect.enabled) ? " → " : "")
-    }${t("output.route")}</div><p class="muted">${t("output.engine", { engine: stateLabel(snapshot.status.engine), audio: stateLabel(snapshot.status.audio) })}</p><p class="muted">${t("output.underruns")} <span id="underruns">${snapshot.status.underruns}</span></p></section><section class="block"><h3>${t("output.preview")}</h3><p class="muted">${t("output.previewHint")}</p><button type="button" id="browser-preview" data-action="preview" aria-pressed="${previewEnabled}">${t("output.activate")}</button></section></div>`;
+    }${t("mixer.channel")} → ${t("common.master")}${state.master_effects
+      .filter((effect) => effect.enabled)
+      .map((effect) => ` → ${effectInfo[effect.kind].name}`)
+      .join(
+        "",
+      )} → ${t("output.server")}</div><p class="muted">${t("output.engine", { engine: stateLabel(snapshot.status.engine), audio: stateLabel(snapshot.status.audio) })}</p><p class="muted">${t("output.underruns")} <span id="underruns">${snapshot.status.underruns}</span></p></section><section class="block"><h3>${t("output.preview")}</h3><p class="muted">${t("output.previewHint")}</p><button type="button" id="browser-preview" data-action="preview" aria-pressed="${previewEnabled}">${t("output.activate")}</button></section></div>`;
   syncPreviewButton();
   const serverError = (snapshot.status.issues ?? []).map(issueText).join(" · ");
   if (serverError) notice(serverError);
@@ -355,22 +346,6 @@ function bindControls() {
               bank: first.bank,
               program: first.program,
             });
-        } else if (field === "add-effect") {
-          if (!value) return;
-          const kind = value as EffectKind;
-          void patch((state) => ({
-            effects: [
-              ...state.effects,
-              {
-                id: crypto.randomUUID
-                  ? crypto.randomUUID()
-                  : `${Date.now()}-${Math.random()}`,
-                kind,
-                enabled: true,
-                value: effectInfo[kind].initial,
-              },
-            ],
-          }));
         } else if (field === "midi_channel")
           void patch({ midi_channel: value === "" ? null : Number(value) });
         else void patch({ [field]: Number(value) });
@@ -409,24 +384,6 @@ function bindControls() {
               : `${input.value}${suffix}`;
         });
     });
-  app.querySelectorAll<HTMLInputElement>("[data-fx-value]").forEach((input) => {
-    input.addEventListener("input", () => {
-      input.previousElementSibling!.textContent = effectInfo[
-        input.dataset.kind as EffectKind
-      ].format(Number(input.value));
-    });
-    input.addEventListener(
-      "change",
-      () =>
-        void patch((state) => ({
-          effects: state.effects.map((effect) =>
-            effect.id === input.dataset.fxValue
-              ? { ...effect, value: Number(input.value) }
-              : effect,
-          ),
-        })),
-    );
-  });
 }
 
 app.addEventListener("click", (event) => {
@@ -448,31 +405,6 @@ app.addEventListener("click", (event) => {
         Object.assign(osc, { [key]: !osc.enabled });
       } else Object.assign(config, { [key]: !config[key as "hq" | "am_osc3"] });
       return { three_osc: config };
-    });
-  if (button.dataset.fxEnabled)
-    void patch((state) => ({
-      effects: state.effects.map((effect) =>
-        effect.id === button.dataset.fxEnabled
-          ? { ...effect, enabled: !effect.enabled }
-          : effect,
-      ),
-    }));
-  if (button.dataset.fxRemove)
-    void patch((state) => ({
-      effects: state.effects.filter(
-        (effect) => effect.id !== button.dataset.fxRemove,
-      ),
-    }));
-  if (button.dataset.fxMove)
-    void patch((state) => {
-      const effects = [...state.effects];
-      const from = effects.findIndex(
-        (effect) => effect.id === button.dataset.fxMove,
-      );
-      const to = from + Number(button.dataset.direction);
-      if (to >= 0 && to < effects.length)
-        [effects[from], effects[to]] = [effects[to], effects[from]];
-      return { effects };
     });
   const action = button.dataset.action;
   if (action === "preview") void togglePreview();
@@ -688,6 +620,7 @@ window.addEventListener("keydown", (event) => {
   if (
     !capturing ||
     settingsOpen ||
+    document.querySelector("dialog[open]") ||
     event.ctrlKey ||
     event.altKey ||
     event.metaKey ||
@@ -782,7 +715,10 @@ function connect() {
       updateHeld();
     } else if (message.type === "error") notice(issueText(message));
     else if (message.type === "meters" && !(audio.ready && previewEnabled))
-      updateMeters(message.channel, message.master);
+      updateMeters(
+        message.channel_stereo ?? [message.channel, message.channel],
+        message.master_stereo ?? [message.master, message.master],
+      );
     if (message.underruns !== undefined && app.querySelector("#underruns"))
       $("#underruns").textContent = String(message.underruns);
   };
@@ -798,16 +734,22 @@ function connect() {
   };
   socket.onerror = () => socket?.close();
 }
-function updateMeters(channel: number, master: number) {
-  for (const [name, value] of [
+function updateMeters(channel: number[], master: number[]) {
+  for (const [name, values] of [
     ["channel", channel],
     ["master", master],
   ] as const) {
-    const element = app.querySelector<HTMLElement>(`[data-meter=${name}]`);
-    if (element) {
+    for (const element of app.querySelectorAll<HTMLElement>(
+      `[data-meter="${name}"]`,
+    )) {
+      const value = values[element.dataset.meterSide === "right" ? 1 : 0] ?? 0;
       element.setAttribute("aria-valuenow", String(Math.round(value * 100)));
-      element.querySelector<HTMLElement>("span")!.style.width =
-        `${Math.min(100, value * 100)}%`;
+      const span = element.querySelector<HTMLElement>("span")!;
+      span.style.width = `${Math.min(100, value * 100)}%`;
+      span.style.setProperty(
+        "--meter-height",
+        `${Math.min(100, value * 100)}%`,
+      );
     }
   }
 }
@@ -825,7 +767,7 @@ function browserMeters() {
         ),
       );
     };
-    updateMeters(peak(audio.channelMeter), peak(audio.masterMeter));
+    updateMeters(audio.channelStereo.map(peak), audio.masterStereo.map(peak));
   }
   setTimeout(browserMeters, 80);
 }

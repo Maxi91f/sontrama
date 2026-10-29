@@ -1,4 +1,130 @@
 export default {
+  "fx.help.gain": "Raises or lowers the signal level in decibels.",
+  "fx.help.width":
+    "0% is mono, 100% preserves the stereo image, and higher values widen it.",
+  "fx.help.type":
+    "Selects which frequencies the filter removes, boosts or attenuates. Shelf filters affect everything above or below their frequency.",
+  "fx.help.frequency":
+    "Sets the cutoff of pass/shelf filters or the center frequency of bell, band-pass and notch filters.",
+  "fx.help.q":
+    "Higher Q makes the response narrower or more resonant around the selected frequency.",
+  "fx.help.slope":
+    "24 dB/oct gives a steeper response by cascading two filter stages.",
+  "fx.help.mix":
+    "0% plays only the original signal (dry); 100% plays only the processed signal (wet).",
+  "fx.help.rate":
+    "How quickly the chorus delay is modulated. Higher values produce faster movement.",
+  "fx.help.depth": "How far the chorus delay moves around its base delay time.",
+  "fx.help.delay": "Base delay time before chorus modulation is applied.",
+  "fx.help.spread":
+    "Phase difference between left and right chorus modulation, in degrees.",
+  "fx.help.feedback":
+    "Sends delayed audio back into the chorus. Negative values invert the returned signal.",
+  "fx.help.decay":
+    "Sets the nominal decay time of the reverb feedback network. Damping and tone filters also affect the audible tail.",
+  "fx.help.pre_delay":
+    "Delay before the signal enters the reverberation network.",
+  "fx.help.room":
+    "Changes the internal delay lengths to suggest a smaller or larger space.",
+  "fx.help.damping":
+    "Frequencies above this point fade faster inside the reverb tail. Lower values make the tail darker.",
+  "fx.help.diffusion":
+    "Controls the scattering of reflections. Higher values make the tail denser and smoother.",
+  "fx.help.low_cut": "Removes low frequencies from the reverberated signal.",
+  "fx.help.high_cut": "Removes high frequencies from the reverberated signal.",
+  "fx.help.threshold":
+    "Signal level above which the compressor starts reducing gain. Knee can make compression start gradually below this point.",
+  "fx.help.ratio":
+    "How strongly levels above the threshold are compressed: 4:1 turns 4 dB above the threshold into 1 dB.",
+  "fx.help.attack":
+    "How quickly gain reduction increases when the signal becomes louder.",
+  "fx.help.release":
+    "How quickly gain reduction relaxes after peaks subside. Longer times make recovery slower.",
+  "fx.help.knee":
+    "Makes the transition into compression more gradual around the threshold. 0 dB is a hard transition.",
+  "fx.help.makeup":
+    "Restores output level after compression; it does not change the threshold.",
+  "fx.help.sidechain_hp":
+    "Removes lows only from the compressor detector, so bass triggers less compression. It does not filter the audible signal.",
+  "fx.help.ceiling":
+    "Maximum sample-peak level at the limiter output. Later effects or gain can raise the level again.",
+  "fx.help.drive":
+    "Raises the input level before limiting. More input gain makes the limiter work harder.",
+  "fx.help.lookahead":
+    "Delays the audio by this amount so the limiter can anticipate peaks. It adds the same amount of latency.",
+
+  "fx.name.gain": "Gain",
+  "fx.name.filter": "Filter",
+  "fx.name.chorus": "Chorus",
+  "fx.name.reverb": "Reverb",
+  "fx.name.compressor": "Compressor",
+  "fx.name.limiter": "Limiter",
+  "fx.parameter.gain": "Gain",
+  "fx.parameter.width": "Stereo width",
+  "fx.parameter.type": "Type",
+  "fx.parameter.frequency": "Frequency",
+  "fx.parameter.q": "Resonance (Q)",
+  "fx.parameter.slope": "Slope",
+  "fx.parameter.mix": "Dry/Wet",
+  "fx.parameter.rate": "Rate",
+  "fx.parameter.depth": "Depth",
+  "fx.parameter.delay": "Delay",
+  "fx.parameter.spread": "Stereo spread",
+  "fx.parameter.feedback": "Feedback",
+  "fx.parameter.decay": "Decay",
+  "fx.parameter.pre_delay": "Pre-delay",
+  "fx.parameter.room": "Room size",
+  "fx.parameter.damping": "Damping frequency",
+  "fx.parameter.diffusion": "Diffusion",
+  "fx.parameter.low_cut": "Low cut",
+  "fx.parameter.high_cut": "High cut",
+  "fx.parameter.threshold": "Threshold",
+  "fx.parameter.ratio": "Ratio",
+  "fx.parameter.attack": "Attack",
+  "fx.parameter.release": "Release",
+  "fx.parameter.knee": "Knee",
+  "fx.parameter.makeup": "Makeup gain",
+  "fx.parameter.sidechain_hp": "Sidechain HPF",
+  "fx.parameter.ceiling": "Ceiling",
+  "fx.parameter.drive": "Input gain",
+  "fx.parameter.lookahead": "Lookahead",
+  "fx.option.lowpass": "Low-pass",
+  "fx.option.highpass": "High-pass",
+  "fx.option.bandpass": "Band-pass",
+  "fx.option.notch": "Notch",
+  "fx.option.peaking": "Bell EQ",
+  "fx.option.lowshelf": "Low shelf",
+  "fx.option.highshelf": "High shelf",
+  "fx.option.12": "12 dB/oct",
+  "fx.option.24": "24 dB/oct",
+  "fx.description.compressor":
+    "Control dynamics with stereo-linked compression.",
+  "fx.description.limiter": "Set a peak ceiling with release and lookahead.",
+
+  "fx.close": "Close",
+  "fx.description.chorus": "Add movement and width to the sound.",
+  "fx.description.reverb": "Create space and a reverberation tail.",
+  "fx.description.gain": "Adjust the signal gain.",
+  "fx.description.filter": "Shape the frequency spectrum with filters and EQ.",
+
+  "mixer.channels": "Mixer channels",
+  "mixer.center": "Center",
+  "mixer.left": "{{amount}}% L",
+  "mixer.right": "{{amount}}% R",
+  "mixer.leftSide": "left",
+  "mixer.rightSide": "right",
+  "mixer.stereoMeter": "{{channel}} level · {{side}}",
+  "mixer.channelRoute": "Instrument → Channel 01",
+  "mixer.masterRoute": "Channel 01 → Master",
+  "mixer.chain": "Effect chain",
+  "mixer.empty": "No effects. Audio goes to the channel controls.",
+  "mixer.panControl": "Pan · {{channel}}",
+  "mixer.serverRoute": "Output → Server",
+  "mixer.select": "Edit {{channel}}",
+  "mixer.summaryVolume": "Volume",
+  "mixer.muteBus": "Mute · {{channel}}",
+  "mixer.soloBus": "Solo · {{channel}}",
+
   "page.title": "Sontrama · Live",
   "mixer.channel": "Channel 01",
   "errors.preset_unavailable": "The preset is unavailable in this SoundFont.",

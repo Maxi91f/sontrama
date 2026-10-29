@@ -14,7 +14,7 @@ fi
 mkdir -p data/soundfonts
 # Service paths are read-only: prepare bytecode and the native kernel beforehand.
 uv run --frozen --no-sync python -m compileall -q src .venv/lib
-uv run --frozen --no-sync python -c 'from sontrama.native_dsp import load_kernel; load_kernel()'
+uv run --frozen --no-sync python -c 'from sontrama.native_dsp import load_kernel; from sontrama.native_effects import load_effect_kernel; load_kernel(); load_effect_kernel()'
 service_group="$(id -gn "$service_user")"
 service_file="$(mktemp)"
 environment_file="$(mktemp)"
