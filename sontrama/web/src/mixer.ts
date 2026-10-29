@@ -157,7 +157,7 @@ export class MixerView {
         <span class="card-heading"><span class="bus-number">${bus === "channel" ? "01" : "M"}</span><strong>${bus === "channel" ? escape(this.instrument) : busName(bus)}</strong><span class="selection-mark" aria-hidden="true">${selected ? "●" : "→"}</span></span>
         ${stereoMeter(bus)}
         <span class="card-stats" id="summary-${bus}"><span><small>${t("nav.effects")}</small><b>${state[effectsKey(bus)].length}</b></span><span><small>${t("mixer.summaryVolume")}</small><b data-summary-volume>${Math.round(Number(state[field(bus, "volume")]) * 100)}%</b></span><span><small>${t("osc.pan")}</small><b data-summary-pan>${panText(Number(state[field(bus, "pan")]))}</b></span></span>
-      </button><div class="card-switches">${(["mute", "solo"] as const).map((control) => `<button type="button" data-bus-toggle="${control}" data-bus="${bus}" aria-label="${t(control === "mute" ? "mixer.muteBus" : "mixer.soloBus", { channel: busName(bus) })}" aria-pressed="${state[field(bus, control)]}">${t(control === "mute" ? "common.mute" : "common.solo")}</button>`).join("")}</div></div>`;
+      </button><div class="card-switches">${(bus === "master" ? (["mute"] as const) : (["mute", "solo"] as const)).map((control) => `<button type="button" data-bus-toggle="${control}" data-bus="${bus}" aria-label="${t(control === "mute" ? "mixer.muteBus" : "mixer.soloBus", { channel: busName(bus) })}" aria-pressed="${state[field(bus, control)]}">${t(control === "mute" ? "common.mute" : "common.solo")}</button>`).join("")}</div></div>`;
   }
 
   private effect(effect: Effect, index: number, length: number) {

@@ -50,8 +50,8 @@ Workspace-level setup, development and deployment scripts are documented in
   3 Osc (three-oscillator synthesis without SoundFonts). Both support octave
   shifts, sustain CC64, modulation CC1, pitch bend and MIDI pressure.
 - **Mixer**: select Channel 01 or Master from compact cards showing stereo
-  meters, effect counts, volume and pan. Mute and Solo are the only editable
-  controls on each card; they do not change the selected channel. Master uses
+  meters, effect counts, volume and pan. Channel cards have Mute/Solo; Master has Mute only. These
+  controls do not change the selected channel. Master uses
   a pink accent. One editor below contains the selected bus's ordered effects,
   volume and stereo pan. Add, remove, bypass and reorder up to eight effects
   per bus (chorus, reverb, gain, filter/EQ, compressor and limiter). The Add effect button

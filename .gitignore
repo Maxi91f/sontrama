@@ -29,8 +29,6 @@ Thumbs.db
 .idea/
 .vscode/
 .claude/settings.local.json
-CLAUDE.local.md
-AGENTS.local.md
 *.sf2
 *.sf3
 /sontrama/data/
@@ -43,3 +41,4 @@ AGENTS.local.md
 /backups/
 /design-skills/
 /sontrama/deploy/local/
+*.local.md
