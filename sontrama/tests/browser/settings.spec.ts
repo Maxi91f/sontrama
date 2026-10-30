@@ -129,12 +129,12 @@ test("keyboard and interface settings synchronize with a phone and saved feedbac
       "notes",
     );
     await expect(page.locator(".settings-toast")).toHaveText(
-      "Guardado en el servidor.",
+      "Configuración guardada",
     );
     await expect(page.locator(".settings-toast")).toBeVisible();
     const toast = (await page.locator(".settings-toast").boundingBox())!;
     expect(toast.y + toast.height).toBeGreaterThan(
-      page.viewportSize()!.height - 60,
+      (await page.locator(".bottom-dock").boundingBox())!.y - 60,
     );
     await expect(page.locator(".settings-toast")).toBeHidden({ timeout: 3500 });
     await phone.reload();
@@ -150,7 +150,6 @@ test("keyboard and interface settings synchronize with a phone and saved feedbac
       "reduced",
     );
     await page.getByRole("button", { name: "← Volver", exact: true }).click();
-    await page.getByText("Teclado de prueba", { exact: true }).click();
     await expect(page.locator('[data-note="62"] span')).toHaveText("Re4");
     await page.evaluate(async () => {
       const observer = new WebSocket(`ws://${location.host}/ws`);

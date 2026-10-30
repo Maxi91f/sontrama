@@ -29,7 +29,7 @@ test("channel selector edits one bus, syncs controls and processes master audio"
     ).toBeVisible();
     for (const screen of [page, phone])
       await screen.getByRole("tab", { name: "Mixer", exact: true }).click();
-    await expect(page.getByRole("tab")).toHaveCount(4);
+    await expect(page.getByRole("tab")).toHaveCount(5);
     await expect(page.locator(".channel-card")).toHaveCount(2);
     await expect(
       page.locator(
@@ -252,4 +252,90 @@ test("effect picker stays beside the chain heading and supports modal keyboard n
   expect(
     (await (await request.get("/api/state")).json()).session.effects,
   ).toEqual(before);
+});
+
+test("stereo meters hold peaks, latch overloads and reset when switching sources", async ({
+  page,
+  request,
+}) => {
+  await request.patch("/api/settings", {
+    data: { interface: { language: "en" } },
+  });
+  await request.patch("/api/session", {
+    data: {
+      instrument: "three-osc",
+      volume: 1,
+      master: 0.01,
+      effects: [{ id: "meter-gain", kind: "gain", enabled: true, value: 24 }],
+      master_effects: [],
+    },
+  });
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Output", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Enable preview", exact: true })
+    .click();
+  await page.getByRole("tab", { name: "Mixer", exact: true }).click();
+  const channel = page.locator(
+    '[data-summary="channel"] [data-meter-side="left"]',
+  );
+  const master = page.locator(
+    '[data-summary="master"] [data-meter-side="left"]',
+  );
+  const editor = page.locator('.mixer-editor [data-meter-side="left"]');
+  await page.evaluate(async () => {
+    const socket = new WebSocket(`ws://${location.host}/ws`);
+    await new Promise((resolve) =>
+      socket.addEventListener("message", resolve, { once: true }),
+    );
+    (window as any).meterSource = socket;
+    socket.send(JSON.stringify({ type: "midi", data: [0x90, 60, 127] }));
+  });
+  try {
+    await expect(channel).toHaveAttribute("data-clipping", "true");
+    await expect(editor).toHaveAttribute("data-clipping", "true");
+    await expect(master).toHaveAttribute("data-clipping", "false");
+    await expect(channel).toHaveAttribute("data-source", "preview");
+    await expect(channel).toHaveAttribute("aria-valuetext", /dBFS.*Full scale/);
+    for (const width of [1240, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+    }
+    await page.setViewportSize({ width: 1240, height: 900 });
+    await page.screenshot({
+      path: "../experiments/meters/overload.png",
+      fullPage: true,
+    });
+    await page.evaluate(() =>
+      (window as any).meterSource.send(
+        JSON.stringify({ type: "midi", data: [0x80, 60, 0] }),
+      ),
+    );
+    await expect
+      .poll(async () => {
+        const level = Number(await channel.getAttribute("data-level-db"));
+        const peak = Number(await channel.getAttribute("data-peak-db"));
+        return peak - level;
+      })
+      .toBeGreaterThan(12);
+    const held = Number(await channel.getAttribute("data-peak-db"));
+    await expect
+      .poll(async () => Number(await channel.getAttribute("data-peak-db")))
+      .toBeLessThan(held - 5);
+    await expect(channel).toHaveAttribute("data-clipping", "false");
+    await page.getByRole("tab", { name: "Output", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Preview enabled", exact: true })
+      .click();
+    await page.getByRole("tab", { name: "Mixer", exact: true }).click();
+    await expect(channel).toHaveAttribute("data-source", "server");
+    await expect(channel).toHaveAttribute("data-peak-db", "-60.00");
+    await expect(channel).toHaveAttribute("data-clipping", "false");
+  } finally {
+    await page.evaluate(() => (window as any).meterSource?.close());
+  }
 });

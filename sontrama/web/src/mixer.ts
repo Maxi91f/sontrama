@@ -41,7 +41,7 @@ const panText = (pan: number) =>
       });
 
 export function stereoMeter(bus: Bus, vertical = false) {
-  return `<span class="bus-meter ${vertical ? "vertical" : ""}">${["left", "right"].map((side) => `<span class="meter" role="meter" aria-label="${t("mixer.stereoMeter", { channel: busName(bus), side: t(side === "left" ? "mixer.leftSide" : "mixer.rightSide") })}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-meter="${bus}" data-meter-side="${side}"><span></span></span>`).join("")}</span>`;
+  return `<span class="bus-meter ${vertical ? "vertical" : ""}">${["left", "right"].map((side) => `<span class="meter" role="meter" aria-label="${t("mixer.stereoMeter", { channel: busName(bus), side: t(side === "left" ? "mixer.leftSide" : "mixer.rightSide") })}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-meter="${bus}" data-meter-side="${side}"><span class="meter-bands" aria-hidden="true"><i class="meter-green"></i><i class="meter-yellow"></i><i class="meter-red"></i></span><i class="meter-peak" aria-hidden="true"></i><i class="meter-clip" aria-hidden="true"></i></span>`).join("")}${vertical ? '<span class="meter-ticks" aria-hidden="true"><span>0</span><span>−12</span><span>−36</span><span>−60</span></span>' : ""}</span>`;
 }
 
 export class MixerView {

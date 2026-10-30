@@ -52,20 +52,21 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
         )
     configuration = ConfigurationService(studio)
     clients: dict[WebSocket, asyncio.Queue] = {}
+    visualization_clients: dict[WebSocket, int] = {}
 
     async def meters():
         while True:
             await asyncio.sleep(0.08)
-            broadcast(
-                {
-                    "type": "meters",
-                    "channel": studio.levels[0],
-                    "master": studio.levels[1],
-                    "channel_stereo": studio.stereo_levels[0],
-                    "master_stereo": studio.stereo_levels[1],
-                    "underruns": studio.underruns,
-                }
-            )
+            broadcast({"type": "meters", **studio.read_meters()})
+            if visualization_clients:
+                event = await asyncio.to_thread(
+                    studio.read_visualization, max(visualization_clients.values()), packed=True
+                )
+                for socket in list(visualization_clients):
+                    queue = clients.get(socket)
+                    # Visualization frames are disposable; never displace MIDI events.
+                    if queue is not None and queue.qsize() < 4:
+                        queue.put_nowait(event)
 
     def broadcast(event: dict):
         for queue in list(clients.values()):
@@ -207,6 +208,20 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
                         for name in set(previous_names) - set(names):
                             studio.release_source(source + ":midi:" + name)
                         broadcast(configuration.snapshot())
+                    elif message.get("type") == "visualization_subscribe":
+                        enabled = message.get("enabled")
+                        if not isinstance(enabled, bool):
+                            raise ValueError("Visualization subscription must be a boolean")
+                        window_size = message.get("window_size", 1024)
+                        if type(window_size) is not int or window_size not in (1024, 2048, 4096):
+                            raise ValueError(
+                                "Visualization window must be 1024, 2048 or 4096 samples"
+                            )
+                        if enabled:
+                            visualization_clients[socket] = window_size
+                        else:
+                            visualization_clients.pop(socket, None)
+                        studio.enable_visualization(bool(visualization_clients))
                     elif message.get("type") == "release":
                         studio.release_source(source)
                     elif message.get("type") == "panic":
@@ -221,6 +236,8 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
             pass
         finally:
             clients.pop(socket, None)
+            visualization_clients.pop(socket, None)
+            studio.enable_visualization(bool(visualization_clients))
             configuration.browser_devices.pop(source, None)
             broadcast(configuration.snapshot())
             studio.release_source(source)

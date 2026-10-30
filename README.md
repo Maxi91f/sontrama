@@ -59,6 +59,18 @@ Select a channel or Master, shape its effect chain, then adjust its level and pa
   </tr>
 </table>
 
+### See your sound
+
+Build a dashboard with a spectrogram, vectorscope and VU meter—or add a tuner
+and MIDI monitor. Drag and resize the views to suit your setup.
+
+![Dashboard showing all eight audio and MIDI visualizations](docs/assets/visualizations.png)
+
+Pin views to the **Monitor bar** alongside the keyboard. They stay within reach
+while you edit instruments and effects.
+
+![Monitor bar with the test keyboard between a pinned VU meter and vectorscope](docs/assets/monitor-bar.png)
+
 ### MIDI in motion
 
 Incoming MIDI lights up the keyboard, even with browser preview off.

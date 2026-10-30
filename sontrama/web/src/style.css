@@ -451,18 +451,6 @@ h3 {
   margin-top: 24px;
   max-width: 320px;
 }
-.meter {
-  height: 10px;
-  border: 2px solid var(--ink);
-  background: var(--workspace);
-  margin: 20px 0;
-}
-.meter span {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: var(--primary);
-}
 .signal-path {
   font:
     13px/1.7 "JetBrains Mono Variable",
@@ -478,17 +466,6 @@ h3 {
   border-bottom: 3px solid var(--ink);
   color: #721b15;
   overflow-wrap: anywhere;
-}
-.keyboard-drawer {
-  border-top: 3px solid var(--ink);
-}
-.keyboard-drawer > summary {
-  padding: 16px 28px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.keyboard-pane {
-  padding: 8px 28px 20px;
 }
 .keyboard-head {
   margin-bottom: 20px;
@@ -588,12 +565,6 @@ h3 {
   .piano .upper {
     display: none;
   }
-  .keyboard-pane {
-    padding-inline: 24px;
-  }
-  .keyboard-drawer > summary {
-    padding-inline: 24px;
-  }
 }
 @container (max-width:400px) {
   .studio-header {
@@ -640,12 +611,6 @@ h3 {
   }
   .keyboard-head label {
     align-items: flex-start;
-  }
-  .keyboard-pane {
-    padding: 8px 12px 24px;
-  }
-  .keyboard-drawer > summary {
-    padding-inline: 16px;
   }
   .instrument-controls {
     gap: 20px;
@@ -913,10 +878,6 @@ button.channel-pick[aria-pressed] {
   border-width: 1px;
   background: var(--surface);
 }
-.bus-meter .meter > span {
-  background: #000;
-  height: 100% !important;
-}
 .mixer-editor {
   border: 3px solid #000;
   background: var(--surface);
@@ -972,7 +933,7 @@ button.channel-pick[aria-pressed] {
   padding: 16px;
   border-top: 3px solid #000;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 46px;
+  grid-template-columns: minmax(0, 1fr) 66px;
   gap: 24px;
 }
 .bus-ranges {
@@ -987,7 +948,7 @@ button.channel-pick[aria-pressed] {
 }
 .bus-meter.vertical {
   grid-template-rows: 1fr;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 22px;
   margin: 0;
   height: 92px;
 }
@@ -996,16 +957,6 @@ button.channel-pick[aria-pressed] {
   position: relative;
   border-width: 2px;
   background: var(--workspace);
-}
-.bus-meter.vertical .meter > span {
-  position: absolute;
-  bottom: 0;
-  width: 100% !important;
-  height: 0;
-  background: var(--primary);
-}
-.bus-meter.vertical .meter > span[style] {
-  height: var(--meter-height, 0%) !important;
 }
 .bus-route {
   border-top: 2px solid #000;
@@ -1047,7 +998,7 @@ button.channel-pick[aria-pressed] {
 }
 @container (max-width: 400px) {
   .studio-tabs button:last-child {
-    grid-column: auto;
+    grid-column: 1 / -1;
   }
 }
 
@@ -1212,4 +1163,931 @@ button.channel-pick[aria-pressed] {
 }
 .effect-control > output {
   line-height: 44px;
+}
+
+/* Digital peak meters: flat color bands, a held peak, and a full-scale latch. */
+.meter {
+  position: relative;
+  border: 1px solid var(--ink);
+  min-width: 0;
+  --meter-level: 0%;
+  --meter-peak: 0%;
+}
+.meter-bands {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  clip-path: inset(0 calc(100% - var(--meter-level)) 0 0);
+}
+.meter-bands i {
+  display: block;
+}
+.meter-green {
+  flex: 80;
+  background: #52db82;
+}
+.meter-yellow {
+  flex: 15;
+  background: #ffea00;
+}
+.meter-red {
+  flex: 5;
+  background: #ff5277;
+}
+.meter-peak {
+  position: absolute;
+  inset-block: 0;
+  left: clamp(0px, calc(var(--meter-peak) - 1px), calc(100% - 2px));
+  width: 2px;
+  background: var(--ink);
+  opacity: 0;
+}
+.meter[data-peak-visible="true"] .meter-peak {
+  opacity: 1;
+}
+.meter-clip {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 5px;
+  height: 100%;
+  background: #ff5277;
+}
+.meter[data-clipping="true"] {
+  border-color: #c51e39;
+}
+.meter[data-clipping="true"] .meter-clip {
+  display: block;
+}
+.vertical .meter-bands {
+  flex-direction: column-reverse;
+  clip-path: inset(calc(100% - var(--meter-level)) 0 0 0);
+}
+.vertical .meter-peak {
+  inset-inline: 0;
+  top: clamp(0px, calc(100% - var(--meter-peak) - 1px), calc(100% - 2px));
+  width: 100%;
+  height: 2px;
+}
+.vertical .meter-clip {
+  width: 100%;
+  height: 5px;
+}
+.meter-ticks {
+  display: block;
+  position: relative;
+  color: var(--muted);
+  font:
+    8px/1 "JetBrains Mono Variable",
+    monospace;
+}
+.meter-ticks span {
+  position: absolute;
+  left: 0;
+}
+.meter-ticks span:nth-child(1) {
+  top: 0;
+}
+.meter-ticks span:nth-child(2) {
+  top: 20%;
+  transform: translateY(-50%);
+}
+.meter-ticks span:nth-child(3) {
+  top: 60%;
+  transform: translateY(-50%);
+}
+.meter-ticks span:nth-child(4) {
+  bottom: 0;
+}
+
+/* Shared monitor dock and responsive visualization dashboard. */
+body {
+  padding-bottom: calc(var(--dock-height, 240px) + 28px);
+}
+.bottom-dock {
+  position: fixed;
+  bottom: 0;
+  left: 16px;
+  right: 16px;
+  z-index: 20;
+  border: 3px solid #000;
+  background: var(--surface);
+  box-shadow: 5px -5px #000;
+  max-height: 45dvh;
+  display: flex;
+  flex-direction: column;
+}
+.dock-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--toolbar, #fff168);
+  border-bottom: 2px solid #000;
+}
+.dock-bar > button {
+  margin-left: auto;
+}
+.dock-content {
+  display: flex;
+  gap: 16px;
+  padding: 12px;
+  overflow: auto;
+  min-height: 0;
+}
+.dock-keyboard {
+  flex: 1 0 480px;
+  min-width: 0;
+}
+.dock-keyboard h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.dock-keyboard .keyboard-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.dock-keyboard .piano {
+  height: 100px;
+  min-width: 480px;
+  margin: 0;
+}
+.dock-visual {
+  flex: 0 0 300px;
+  min-width: 0;
+  border: 2px solid #000;
+  padding: 8px;
+  background: var(--workspace);
+}
+.dock-visual header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.dock-visual h3 {
+  font-size: 12px;
+  flex: 1;
+  margin: 0;
+}
+.dock-visual button {
+  min-height: 32px;
+  padding: 4px 8px;
+  box-shadow: 2px 2px #000;
+}
+.dock-visual canvas {
+  height: 90px;
+}
+.dock-picker label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.dock-picker select {
+  max-width: 220px;
+  padding: 6px;
+  min-height: 36px;
+}
+.bottom-dock[data-collapsed="true"] .dock-content {
+  display: none;
+}
+.visual-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.visual-toolbar h2 {
+  margin: 0;
+}
+.visual-toolbar > div {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.visual-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.visual-widget {
+  display: flex;
+  flex-direction: column;
+  grid-column: span var(--visual-width);
+  min-width: 0;
+  padding: 14px;
+  background: var(--surface);
+  border: 3px solid #000;
+  box-shadow: 5px 5px #000;
+}
+.visual-widget > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.visual-widget h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.visual-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.visual-actions button {
+  padding: 5px 8px;
+  min-height: 36px;
+  box-shadow: 2px 2px #000;
+}
+.visual-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin: 14px 0;
+}
+.visual-controls label {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.visual-controls select {
+  min-height: 36px;
+  padding: 5px;
+  max-width: 180px;
+}
+.visual-controls button {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+.visual-widget > :not(canvas) {
+  flex-shrink: 0;
+}
+.visual-widget canvas {
+  flex: 1 0 var(--visual-height);
+  min-height: var(--visual-height);
+  height: var(--visual-height);
+}
+.visual-widget canvas,
+.dock-visual canvas {
+  width: 100%;
+  display: block;
+  border: 2px solid #000;
+  background: #fffef5;
+}
+.visual-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: 10px monospace;
+  margin-top: 8px;
+}
+.visual-legend [data-visual-source] {
+  margin-left: auto;
+}
+.signal-left {
+  color: #138249;
+  font-weight: 700;
+}
+.signal-right {
+  color: #c02967;
+  font-weight: 700;
+}
+.visual-empty {
+  padding: 48px 20px;
+  border: 3px dashed #000;
+  text-align: center;
+}
+.visual-error:empty {
+  display: none;
+}
+.settings-toast {
+  bottom: calc(var(--dock-height, 0px) + 20px);
+  z-index: 40;
+}
+@media (max-width: 800px) {
+  .visual-grid {
+    grid-template-columns: 1fr;
+  }
+  .visual-widget {
+    grid-column: 1;
+  }
+  .bottom-dock {
+    left: 8px;
+    right: 8px;
+  }
+  .dock-heading {
+    display: none;
+  }
+  .dock-bar {
+    gap: 8px;
+    padding: 6px;
+  }
+  .dock-picker {
+    min-width: 0;
+    flex: 1;
+  }
+  .dock-picker label {
+    display: grid;
+    gap: 3px;
+  }
+  .dock-picker select {
+    width: 100%;
+    max-width: 100%;
+  }
+  .dock-content {
+    display: block;
+    padding: 8px;
+  }
+  .dock-keyboard {
+    overflow-x: auto;
+  }
+  .dock-visual {
+    width: 100%;
+  }
+  .dock-content [data-active="false"] {
+    display: none;
+  }
+  .dock-visual canvas {
+    height: 120px;
+  }
+  .dock-keyboard .keyboard-head {
+    min-width: 0;
+  }
+  .dock-keyboard .piano {
+    height: 90px;
+  }
+}
+.studio-tabs {
+  flex-wrap: wrap;
+}
+
+.dock-keyboard .piano .white {
+  height: 100%;
+}
+.dock-keyboard .piano .black {
+  height: 63%;
+}
+@media (max-width: 800px) {
+  .dock-keyboard .keyboard-head {
+    flex-wrap: nowrap;
+  }
+  .dock-keyboard .keyboard-head button {
+    width: auto;
+  }
+}
+
+.dock-picker {
+  display: none;
+}
+@media (max-width: 800px) {
+  .dock-picker {
+    display: block;
+  }
+}
+html {
+  scroll-padding-bottom: calc(var(--dock-height, 240px) + 24px);
+}
+
+.visual-widget {
+  position: relative;
+}
+.visual-widget > header h3 {
+  flex: 1;
+}
+.visual-move-handle,
+.visual-resize-handle {
+  touch-action: none;
+  user-select: none;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 2px 6px;
+}
+.visual-move-handle {
+  cursor: grab;
+  font-size: 22px;
+}
+.visual-resize-handle {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  cursor: nwse-resize;
+  width: 36px;
+  min-width: 36px;
+  min-height: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+.visual-resize-handle svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.visual-widget .visual-resize-handle:hover,
+.visual-widget .visual-resize-handle:active {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+.visual-resize-handle:hover svg,
+.visual-resize-handle:focus-visible svg {
+  opacity: 1;
+}
+.visual-widget .visual-legend {
+  padding-right: 42px;
+  min-height: 28px;
+}
+.visual-widget.grid-editing {
+  outline: 3px dashed #000;
+  outline-offset: 5px;
+}
+.visual-widget[data-drop="before"] {
+  box-shadow:
+    -7px -7px 0 #138249,
+    5px 5px #000;
+}
+.visual-widget[data-drop="after"] {
+  box-shadow: 7px 7px 0 #138249;
+}
+.visual-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  pointer-events: none;
+  background: #ffea00;
+  border: 3px solid #000;
+  box-shadow: 4px 4px #000;
+  padding: 10px 16px;
+  font-weight: 700;
+}
+body.grid-interacting {
+  user-select: none;
+  cursor: grabbing;
+}
+
+/* Dock widths are independent of dashboard sizes; piano keys never stretch. */
+.dock-item {
+  position: relative;
+  flex: 0 0 var(--dock-item-width);
+  width: var(--dock-item-width);
+  max-width: none;
+  min-width: 0;
+  padding-right: 16px;
+}
+.dock-keyboard .keyboard-head {
+  flex-wrap: nowrap;
+}
+.dock-keyboard .keyboard-head h3 {
+  min-width: 0;
+  font-size: 12px;
+}
+.dock-keyboard .keyboard-head button {
+  flex: none;
+  font-size: 12px;
+  padding: 6px 8px;
+  min-height: 36px;
+}
+.piano-viewport {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.dock-keyboard .piano {
+  --piano-columns: 20;
+  width: 560px;
+  min-width: 560px;
+  max-width: none;
+  height: 100px;
+}
+.dock-keyboard .piano .upper {
+  display: block;
+}
+.dock-keyboard .piano .white {
+  flex: 0 0 28px;
+  width: 28px;
+}
+.dock-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  width: 14px;
+  min-width: 14px;
+  max-width: 14px;
+  min-height: 44px;
+  padding: 0 !important;
+  border: 0;
+  border-left: 2px solid #000;
+  background: var(--toolbar);
+  box-shadow: none !important;
+  border-radius: 0;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+  font-size: 12px;
+}
+.dock-resizing {
+  outline: 2px dashed #000;
+  outline-offset: 2px;
+}
+.dock-bar {
+  padding: 3px 10px;
+  min-height: 30px;
+}
+.dock-toggle {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  width: 32px;
+  min-width: 32px;
+  height: 28px;
+  min-height: 28px;
+  font: 700 24px/1 monospace;
+}
+.dock-toggle:active {
+  transform: none;
+}
+.bottom-dock[data-collapsed="true"] {
+  box-shadow: 0 -2px #000;
+  border-width: 2px;
+}
+.bottom-dock[data-collapsed="true"] .dock-bar {
+  min-height: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+}
+.bottom-dock[data-collapsed="true"] .dock-heading,
+.bottom-dock[data-collapsed="true"] .dock-picker {
+  display: none;
+}
+.bottom-dock[data-collapsed="true"] .dock-toggle {
+  width: 100%;
+  height: 20px;
+  min-height: 20px;
+  line-height: 20px;
+}
+@media (max-width: 800px) {
+  .dock-item {
+    width: min(100%, var(--dock-item-width));
+  }
+  .dock-keyboard {
+    overflow: visible;
+  }
+  .dock-bar {
+    padding: 3px 6px;
+  }
+  .dock-picker label {
+    display: flex;
+  }
+  .dock-picker select {
+    min-height: 30px;
+    padding: 2px 5px;
+    font-size: 12px;
+  }
+}
+
+.dock-content {
+  flex-wrap: wrap;
+  overflow-x: hidden;
+}
+.dock-item {
+  max-width: 100%;
+}
+.dock-keyboard {
+  flex: 0 0 600px;
+  width: 600px;
+  padding-right: 0;
+}
+.dock-resize-handle {
+  width: 18px;
+  min-width: 18px;
+  max-width: 18px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+.dock-resize-handle svg {
+  width: 12px;
+  height: 24px;
+  opacity: 0.45;
+  pointer-events: none;
+}
+.dock-item .dock-resize-handle:hover,
+.dock-item .dock-resize-handle:active {
+  background: transparent;
+  transform: none;
+  box-shadow: none;
+}
+.dock-resize-handle:hover svg,
+.dock-resize-handle:focus-visible svg {
+  opacity: 1;
+}
+@media (max-width: 800px) {
+  .dock-keyboard {
+    width: 100%;
+  }
+}
+
+.dock-move-handle {
+  border: 0;
+  background: transparent;
+  box-shadow: none !important;
+  padding: 0 !important;
+  min-width: 24px;
+  width: 24px;
+  min-height: 28px;
+  cursor: grab;
+  touch-action: none;
+  color: var(--muted);
+}
+.dock-move-handle:hover,
+.dock-move-handle:active {
+  background: transparent !important;
+  transform: none;
+  color: var(--ink);
+}
+.dock-keyboard .keyboard-head h3 {
+  flex: 1;
+}
+.dock-item.grid-editing {
+  outline: 2px dashed #000;
+  outline-offset: -3px;
+}
+@media (max-width: 800px) {
+  .bottom-dock.layout-reordering .dock-content [data-active="false"] {
+    display: block;
+  }
+  .bottom-dock.layout-reordering .dock-item {
+    margin-bottom: 12px;
+  }
+}
+
+.dock-content {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  column-gap: 0;
+  row-gap: 12px;
+  align-items: stretch;
+}
+.dock-panel {
+  height: 188px;
+  border: 2px solid #000;
+  background: var(--toolbar);
+  padding: 8px 16px 8px 8px;
+  min-width: 0;
+}
+.dock-panel-header,
+.dock-panel .keyboard-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-height: 36px;
+  margin-bottom: 8px;
+}
+.dock-panel-header h3 {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  margin: 0;
+}
+.dock-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.dock-panel .piano {
+  height: 100px;
+}
+@media (max-width: 800px) {
+  .dock-content {
+    display: block;
+  }
+}
+
+.dock-placement-shadow {
+  height: 188px;
+  max-width: 100%;
+  pointer-events: none;
+  z-index: 5;
+  border: 2px dashed #000;
+  background: rgb(0 0 0 / 8%);
+  box-shadow: 4px 4px 0 rgb(0 0 0 / 20%);
+}
+
+.dock-content {
+  position: relative;
+}
+
+.dock-keyboard {
+  width: var(--dock-item-width, 600px);
+  flex-basis: var(--dock-item-width, 600px);
+  container-type: inline-size;
+  container-name: keyboard-panel;
+}
+.dock-keyboard .piano-viewport {
+  overflow: hidden;
+}
+.keyboard-octaves {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dock-keyboard .keyboard-octaves button {
+  padding: 0;
+  width: 28px;
+  min-height: 28px;
+  height: 28px;
+  box-shadow: 1px 1px #000;
+}
+.keyboard-octaves output {
+  min-width: 28px;
+  text-align: center;
+  font: 12px monospace;
+}
+.capture-icon {
+  display: none;
+}
+@container keyboard-panel (max-width: 420px) {
+  .capture-label {
+    display: none;
+  }
+  .capture-icon {
+    display: inline;
+  }
+  .dock-panel-header h3 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* Dock overflow stays horizontal: every item and placement shadow uses row one. */
+.dock-content {
+  display: grid;
+  grid-template-rows: 188px;
+  grid-auto-flow: column;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.bottom-dock.layout-reordering .dock-item {
+  margin-bottom: 0;
+}
+@media (max-width: 800px) {
+  .dock-content {
+    display: grid;
+  }
+}
+
+/* Legacy container rules must not stretch controls inside a narrow piano panel. */
+.dock-keyboard .keyboard-head button {
+  width: auto;
+}
+.dock-keyboard .keyboard-head .dock-move-handle {
+  width: 24px;
+  min-width: 24px;
+  flex: 0 0 24px;
+}
+.dock-keyboard .keyboard-head #capture-keyboard {
+  width: auto;
+  max-width: none;
+}
+.dock-keyboard .keyboard-octaves button {
+  width: 28px;
+  flex: 0 0 28px;
+}
+.dock-keyboard {
+  width: max(460px, var(--dock-item-width, 600px));
+}
+
+.visual-picker {
+  width: min(700px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  padding: 20px;
+  background: var(--surface);
+  border: 3px solid #000;
+  box-shadow: 8px 8px #000;
+}
+.visual-picker::backdrop {
+  background: rgb(0 0 0 / 25%);
+}
+.visual-picker > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.visual-picker h2 {
+  margin: 0;
+}
+.visual-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.visual-picker-grid button {
+  text-align: left;
+  padding: 14px;
+  min-height: 100px;
+}
+.visual-picker-grid strong,
+.visual-picker-grid span {
+  display: block;
+}
+.visual-picker-grid span {
+  margin-top: 8px;
+  font-weight: 400;
+  font-size: 12px;
+}
+.visual-legend {
+  min-width: 0;
+}
+.visual-legend [data-visual-summary] {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .visual-picker-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.spectral-options {
+  margin: 0 0 14px;
+  border: 2px solid #000;
+  padding: 8px;
+  background: var(--workspace);
+}
+.spectral-options > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+.spectral-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.spectral-options-grid label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
+}
+.spectral-options-grid select,
+.spectral-options-grid input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px;
+  min-height: 36px;
+  font-size: 12px;
+}
+.spectral-options-grid input {
+  border: 3px solid #000;
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 3px 3px #000;
+}
+.spectral-options [data-analysis-info] {
+  font: 10px monospace;
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Pinned views keep their bus in the header; reserve the body for the chart. */
+.dock-visual .visual-legend {
+  display: none;
+}
+
+.dock-visual canvas {
+  height: 120px;
 }

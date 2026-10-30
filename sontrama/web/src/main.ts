@@ -1,3 +1,4 @@
+import { PanelKeyboard } from "./panel-keyboard";
 import {
   t,
   setLanguage,
@@ -9,6 +10,12 @@ import {
 import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import "./style.css";
+import {
+  VisualizationsView,
+  dockPanel,
+  dockResizeHandle,
+} from "./visualizations";
+import { StereoMeters } from "./meters";
 import { MixerView } from "./mixer";
 import { BrowserInstrument } from "./audio";
 import { threeOscPanel } from "./three-osc-panel";
@@ -26,10 +33,12 @@ import { effectInfo, type Session, type Snapshot } from "./types";
 document.title = t("page.title");
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const audio = new BrowserInstrument();
+const meters = new StereoMeters();
 const tabs = [
   ["inputs", "nav.inputs"],
   ["instrument", "nav.instrument"],
   ["mixer", "nav.mixer"],
+  ["visualizations", "nav.visualizations"],
   ["output", "nav.output"],
 ] as const;
 let snapshot: Snapshot | null = null;
@@ -45,6 +54,7 @@ let midiAccess: MIDIAccess | null = null;
 let starting = false;
 let mutation = Promise.resolve();
 let lastServerError = "";
+let panelKeyboard: PanelKeyboard | null = null;
 const held = new Map<string, { note: number }>();
 const incomingNotes = new Set<number>();
 const escape = (value: unknown) =>
@@ -66,12 +76,12 @@ app.innerHTML = `
     <nav class="studio-tabs" role="tablist" aria-label="${t("nav.liveSections")}">${tabs.map(([key, name]) => `<button type="button" id="tab-${key}" role="tab" aria-controls="panel-${key}" data-tab="${key}" aria-selected="false">${t(name)}</button>`).join("")}</nav>
     <div id="notice" role="alert" hidden></div>
     <div class="workspace">${tabs.map(([key]) => `<section id="panel-${key}" class="pane" role="tabpanel" aria-labelledby="tab-${key}" hidden></section>`).join("")}</div>
-    <details class="keyboard-drawer" ${capturing ? "open" : ""}><summary>${t("keyboard.title")}</summary><section class="keyboard-pane">
-      <div class="keyboard-head"><button id="capture-keyboard" type="button" aria-pressed="false">${t("keyboard.capture")}</button></div>
-      <div class="piano" aria-label="${t("keyboard.range")}"></div>
-    </section></details>
     </div>
     ${settingsView()}
+    <footer class="bottom-dock" aria-label="${t("visuals.dock")}">
+      <header class="dock-bar"><strong class="dock-heading">${t("visuals.dock")}</strong><div class="dock-picker"></div><button type="button" class="dock-toggle" data-visual-action="collapse" aria-label="${t("visuals.collapse")}" aria-controls="dock-content" aria-expanded="true">⌄</button></header>
+      <div class="dock-content dock-visuals" id="dock-content">${dockPanel("keyboard", t("keyboard.title"), `<div class="piano-viewport"><div class="piano" aria-label="${t("keyboard.range")}"></div></div>${dockResizeHandle("keyboard")}`, `<div class="keyboard-octaves"><button type="button" id="keyboard-octave-down" aria-label="${t("keyboard.octaveDown")}">−</button><output id="keyboard-octave-value"></output><button type="button" id="keyboard-octave-up" aria-label="${t("keyboard.octaveUp")}">+</button></div><button id="capture-keyboard" type="button" aria-pressed="false">${t("keyboard.capture")}</button>`, "dock-keyboard", 'data-active="true"')}</div>
+    </footer>
   </main>`;
 
 function stateLabel(state: string) {
@@ -88,7 +98,8 @@ function translateShell() {
   gear.setAttribute("aria-label", t("nav.settings"));
   gear.title = t("nav.settings");
   $(".live-tag").textContent = t("common.live");
-  $(".keyboard-drawer summary").textContent = t("keyboard.title");
+  $(".dock-keyboard h3").textContent = t("keyboard.title");
+  $(".bottom-dock").setAttribute("aria-label", t("visuals.dock"));
   $(".piano").setAttribute("aria-label", t("keyboard.range"));
   $("#connection").textContent = t(
     connected ? "connection.connected" : "connection.connecting",
@@ -101,6 +112,33 @@ function translateShell() {
 }
 
 const mixer = new MixerView($("#panel-mixer"), patch);
+const visualizations = new VisualizationsView(
+  $("#panel-visualizations"),
+  $(".bottom-dock"),
+  async (configuration) => {
+    await settingsController?.update({ visualizations: configuration });
+  },
+  () =>
+    audio.ready && previewEnabled && audio.context
+      ? {
+          analysers: [...audio.channelStereo, ...audio.masterStereo],
+          sampleRate: audio.context.sampleRate,
+          pitchAnalysers: [...audio.channelPitch, ...audio.masterPitch],
+        }
+      : null,
+  (enabled, windowSize = 1024) => {
+    if (socket?.readyState === WebSocket.OPEN)
+      socket.send(
+        JSON.stringify({
+          type: "visualization_subscribe",
+          enabled,
+          window_size: windowSize,
+        }),
+      );
+  },
+  releaseAll,
+);
+visualizations.accept(sharedSettings.visualizations);
 
 function notice(message = "") {
   $("#notice").textContent = message;
@@ -114,6 +152,7 @@ function activate(tab: string, focus = false) {
   if (tab === "effects") tab = "mixer";
   if (!tabs.some(([key]) => key === tab)) tab = "instrument";
   selectedTab = tab;
+  visualizations.setVisible(tab === "visualizations" && !settingsOpen);
   savePreferences({ tab });
   for (const [key] of tabs) {
     const button = $<HTMLButtonElement>(`#tab-${key}`);
@@ -250,9 +289,10 @@ function patch(
 function syncKeyboardButton() {
   const button = $<HTMLButtonElement>("#capture-keyboard");
   button.setAttribute("aria-pressed", String(capturing));
-  button.textContent = capturing
-    ? t("keyboard.captured")
-    : t("keyboard.capture");
+  const label = t(capturing ? "keyboard.captured" : "keyboard.capture");
+  button.setAttribute("aria-label", label);
+  button.title = label;
+  button.innerHTML = `<span class="capture-label">${label}</span><span class="capture-icon" aria-hidden="true">⌨</span>`;
 }
 function syncPreviewButton() {
   const button = app.querySelector<HTMLButtonElement>("#browser-preview");
@@ -497,6 +537,7 @@ function noteOff(id: string) {
   updateHeld();
 }
 function releaseAll() {
+  panelKeyboard?.release();
   for (const id of [...held.keys()]) noteOff(id);
   if (socket?.readyState === WebSocket.OPEN)
     socket.send(JSON.stringify({ type: "release" }));
@@ -547,61 +588,24 @@ const keyNotes = Object.fromEntries(
 const labels: Record<number, string> = {};
 for (const [, note, label] of mapping)
   labels[note] = labels[note] ? `${labels[note]} · ${label}` : label;
-const noteNames = () => t("notes.names").split("|");
-for (let octave = 0; octave < 3; octave++) {
-  for (const offset of [0, 2, 4, 5, 7, 9, 11]) {
-    const note = 60 + octave * 12 + offset;
-    if (note <= 93) addKey(note, `white ${octave ? "upper" : ""}`);
-  }
-  for (const [position, offset] of [
-    [1, 1],
-    [2, 3],
-    [4, 6],
-    [5, 8],
-    [6, 10],
-  ]) {
-    const note = 60 + octave * 12 + offset;
-    if (note <= 93)
-      addKey(
-        note,
-        `black ${octave ? "upper" : ""}`,
-        octave * 7 + position - 0.31,
-      );
-  }
-}
-function addKey(note: number, className: string, left?: number) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = className;
-  button.dataset.note = String(note);
-  const name = `${noteNames()[note % 12]}${Math.floor(note / 12) - 1}`;
-  button.setAttribute("aria-label", name);
-  button.innerHTML = `<span></span>`;
-  if (left !== undefined)
-    button.style.left = `calc(100% / var(--piano-columns) * ${left})`;
-  button.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    button.setPointerCapture(event.pointerId);
-    noteOn(`pointer:${event.pointerId}`, note);
+panelKeyboard = new PanelKeyboard($(".piano"), labels, noteOn, noteOff);
+panelKeyboard.update(sharedSettings.keyboard);
+for (const [id, delta] of [
+  ["keyboard-octave-down", -1],
+  ["keyboard-octave-up", 1],
+] as const) {
+  $(`#${id}`).addEventListener("click", () => {
+    void settingsController
+      ?.update({
+        keyboard: {
+          panel_octave: Math.max(
+            -5,
+            Math.min(4, sharedSettings.keyboard.panel_octave + delta),
+          ),
+        },
+      })
+      .catch(fail);
   });
-  for (const name of ["pointerup", "pointercancel", "lostpointercapture"])
-    button.addEventListener(name, (event) =>
-      noteOff(`pointer:${(event as PointerEvent).pointerId}`),
-    );
-  button.addEventListener("keydown", (event) => {
-    if ([" ", "Enter"].includes(event.key)) {
-      event.preventDefault();
-      if (!event.repeat) noteOn(`keybutton:${note}`, note);
-    }
-  });
-  button.addEventListener("keyup", (event) => {
-    if ([" ", "Enter"].includes(event.key)) {
-      event.preventDefault();
-      noteOff(`keybutton:${note}`);
-    }
-  });
-  button.addEventListener("blur", () => noteOff(`keybutton:${note}`));
-  $(".piano").append(button);
 }
 $("#capture-keyboard").addEventListener("click", () => {
   releaseAll();
@@ -611,7 +615,6 @@ $("#capture-keyboard").addEventListener("click", () => {
     ?.update({ keyboard: { capture: capturing } })
     .catch((error) => {
       capturing = sharedSettings.keyboard.capture;
-      if (capturing) $<HTMLDetailsElement>(".keyboard-drawer").open = true;
       syncKeyboardButton();
       fail(error);
     });
@@ -642,21 +645,6 @@ window.addEventListener("keyup", (event) => noteOff(`pc:${event.code}`));
 window.addEventListener("blur", releaseAll);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) releaseAll();
-});
-$(".keyboard-drawer").addEventListener("toggle", () => {
-  if (!$<HTMLDetailsElement>(".keyboard-drawer").open) {
-    releaseAll();
-    capturing = false;
-    syncKeyboardButton();
-    void settingsController
-      ?.update({ keyboard: { capture: false } })
-      .catch((error) => {
-        capturing = sharedSettings.keyboard.capture;
-        if (capturing) $<HTMLDetailsElement>(".keyboard-drawer").open = true;
-        syncKeyboardButton();
-        fail(error);
-      });
-  }
 });
 
 async function connectMidi() {
@@ -700,22 +688,33 @@ function connect() {
     $("#connection").className = "connected";
     notice();
     reportMidiDevices();
+    visualizations.reconnect();
   };
   socket.onmessage = (event) => {
     const message = JSON.parse(event.data);
-    if (message.type === "state") accept(message);
+    if (message.type === "visualization") visualizations.receive(message);
+    else if (message.type === "state") accept(message);
     else if (message.type === "settings") settingsController?.accept(message);
     else if (message.type === "midi") {
+      visualizations.midi(message.data);
       highlightMidi(message.data);
       if (previewEnabled) audio.midi(message.data, false);
     } else if (message.type === "panic") {
+      visualizations.silenceMidi();
       audio.panic();
       held.clear();
       incomingNotes.clear();
       updateHeld();
     } else if (message.type === "error") notice(issueText(message));
     else if (message.type === "meters" && !(audio.ready && previewEnabled))
-      updateMeters(
+      meters.accept(
+        "server",
+        message.channel_stereo ?? [message.channel, message.channel],
+        message.master_stereo ?? [message.master, message.master],
+      );
+    if (message.type === "meters")
+      visualizations.receiveLevels(
+        "server",
         message.channel_stereo ?? [message.channel, message.channel],
         message.master_stereo ?? [message.master, message.master],
       );
@@ -724,6 +723,8 @@ function connect() {
   };
   socket.onclose = () => {
     connected = false;
+    meters.clear();
+    visualizations.silenceMidi();
     incomingNotes.clear();
     releaseAll();
     updateHeld();
@@ -734,42 +735,28 @@ function connect() {
   };
   socket.onerror = () => socket?.close();
 }
-function updateMeters(channel: number[], master: number[]) {
-  for (const [name, values] of [
-    ["channel", channel],
-    ["master", master],
-  ] as const) {
-    for (const element of app.querySelectorAll<HTMLElement>(
-      `[data-meter="${name}"]`,
-    )) {
-      const value = values[element.dataset.meterSide === "right" ? 1 : 0] ?? 0;
-      element.setAttribute("aria-valuenow", String(Math.round(value * 100)));
-      const span = element.querySelector<HTMLElement>("span")!;
-      span.style.width = `${Math.min(100, value * 100)}%`;
-      span.style.setProperty(
-        "--meter-height",
-        `${Math.min(100, value * 100)}%`,
-      );
-    }
-  }
-}
-const meterBuffer = new Float32Array(256);
-function browserMeters() {
-  if (audio.ready && previewEnabled) {
-    const peak = (analyser: AnalyserNode | null) => {
-      if (!analyser) return 0;
+const meterBuffer = new Float32Array(2048);
+let lastMeterSample = -Infinity;
+function browserMeters(now: number) {
+  const preview = audio.ready && previewEnabled;
+  meters.useSource(preview ? "preview" : "server");
+  if (preview && now - lastMeterSample >= 32) {
+    const peak = (analyser: AnalyserNode) => {
       analyser.getFloatTimeDomainData(meterBuffer);
-      return Math.min(
-        1,
-        meterBuffer.reduce(
-          (maximum, value) => Math.max(maximum, Math.abs(value)),
-          0,
-        ),
-      );
+      let maximum = 0;
+      for (const value of meterBuffer)
+        maximum = Math.max(maximum, Math.abs(value));
+      return maximum;
     };
-    updateMeters(audio.channelStereo.map(peak), audio.masterStereo.map(peak));
+    const channel = audio.channelStereo.map(peak),
+      master = audio.masterStereo.map(peak);
+    meters.accept("preview", channel, master, now);
+    visualizations.receiveLevels("preview", channel, master);
+    lastMeterSample = now;
   }
-  setTimeout(browserMeters, 80);
+  meters.paint(app, now);
+  visualizations.draw(now);
+  requestAnimationFrame(browserMeters);
 }
 function reportMidiDevices() {
   if (socket?.readyState === WebSocket.OPEN && midiAccess)
@@ -783,27 +770,28 @@ function reportMidiDevices() {
     );
 }
 function updateKeyboardLabels() {
-  const mode = sharedSettings.keyboard.labels;
-  app.querySelectorAll<HTMLButtonElement>("[data-note]").forEach((button) => {
-    const note = Number(button.dataset.note);
-    const name = `${noteNames()[note % 12]}${Math.floor(note / 12) - 1}`;
-    const text =
-      mode === "none"
-        ? ""
-        : mode === "notes"
-          ? name
-          : mode === "both"
-            ? `${name}${labels[note] ? " · " + labels[note] : ""}`
-            : `${note % 12 === 0 ? name + " · " : ""}${labels[note] ?? ""}`;
-    button.setAttribute("aria-label", name);
-    button.querySelector("span")!.textContent = text;
-  });
+  panelKeyboard?.update(sharedSettings.keyboard);
+  const octave = sharedSettings.keyboard.panel_octave;
+  $("#keyboard-octave-value").textContent =
+    `${t("notes.names").split("|")[0]}${4 + octave}`;
+  for (const [id, key, disabled] of [
+    ["keyboard-octave-down", "keyboard.octaveDown", octave <= -5],
+    ["keyboard-octave-up", "keyboard.octaveUp", octave >= 4],
+  ] as const) {
+    const button = $<HTMLButtonElement>(`#${id}`);
+    button.setAttribute("aria-label", t(key));
+    button.title = t(key);
+    button.disabled = disabled;
+  }
+  updateHeld();
 }
+
 settingsController = initializeSettings(
   app,
   (open) => {
     if (open && !settingsOpen) for (const id of [...held.keys()]) noteOff(id);
     settingsOpen = open;
+    visualizations.setVisible(selectedTab === "visualizations" && !open);
     $("#live-view").hidden = open;
   },
   (configuration) => {
@@ -812,7 +800,7 @@ settingsController = initializeSettings(
     if (capturing && !configuration.keyboard.capture)
       for (const id of [...held.keys()]) noteOff(id);
     capturing = configuration.keyboard.capture;
-    if (capturing) $<HTMLDetailsElement>(".keyboard-drawer").open = true;
+    visualizations.accept(configuration.visualizations);
     syncKeyboardButton();
     updateKeyboardLabels();
     if (
@@ -825,7 +813,7 @@ settingsController = initializeSettings(
 );
 updateKeyboardLabels();
 connect();
-browserMeters();
+requestAnimationFrame(browserMeters);
 window.addEventListener("pagehide", () => {
   releaseAll();
   socket?.close();

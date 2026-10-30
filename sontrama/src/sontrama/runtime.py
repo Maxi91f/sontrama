@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import threading
@@ -128,6 +129,9 @@ class Studio:
         self.status = {"engine": "stopped", "audio": "stopped", "midi": [], "errors": []}
         self.levels = [0.0, 0.0]
         self.stereo_levels = [[0.0, 0.0], [0.0, 0.0]]
+        self.meter_peaks = [[0.0, 0.0], [0.0, 0.0]]
+        self.visualization_enabled = False
+        self.visualization_samples = np.zeros((2, 4096, 2), dtype=np.float32)
         self.underruns = 0
         self.midi_source: MidiSource | None = None
         self.pending_banks: dict[tuple[str, int], int] = {}
@@ -382,6 +386,7 @@ class Studio:
                     self.router.reset()
                     self.levels = [0.0, 0.0]
                     self.stereo_levels = [[0.0, 0.0], [0.0, 0.0]]
+                    self.meter_peaks = [[0.0, 0.0], [0.0, 0.0]]
                     swapped = True
                 if audio_changed and self.audio_enabled:
                     device = (
@@ -552,14 +557,87 @@ class Studio:
             block = self.chain.process(block)
             block = self.panner.process(block)
             block *= 0 if self.state.mute else self.state.volume
-            channel_levels = np.minimum(1, np.max(np.abs(block), axis=0)).tolist()
+            if self.visualization_enabled:
+                self._capture_visualization(0, block)
+            channel_levels = np.max(np.abs(block), axis=0).tolist()
             block = self.master_chain.process(block)
             block = self.master_panner.process(block)
             block *= 0 if self.state.master_mute else self.state.master
-            master_levels = np.minimum(1, np.max(np.abs(block), axis=0)).tolist()
-            self.stereo_levels = [channel_levels, master_levels]
-            self.levels = [max(channel_levels), max(master_levels)]
+            if self.visualization_enabled:
+                self._capture_visualization(1, block)
+            master_levels = np.max(np.abs(block), axis=0).tolist()
+            self.stereo_levels = [
+                [min(1, value) for value in levels] for levels in (channel_levels, master_levels)
+            ]
+            self.levels = [max(levels) for levels in self.stereo_levels]
+            for bus, levels in enumerate((channel_levels, master_levels)):
+                for side, value in enumerate(levels):
+                    self.meter_peaks[bus][side] = max(self.meter_peaks[bus][side], value)
             return np.clip(block, -1, 1)
+
+    def _capture_visualization(self, bus, block):
+        """Keep a bounded window; network serialization happens outside the callback."""
+        window = self.visualization_samples[bus]
+        count = min(len(block), len(window))
+        if count < len(window):
+            window[:-count] = window[count:]
+        window[-count:] = block[-count:]
+
+    def enable_visualization(self, enabled):
+        with self.lock:
+            if enabled != self.visualization_enabled:
+                self.visualization_samples.fill(0)
+            self.visualization_enabled = enabled
+
+    def read_visualization(self, window_size=1024, *, packed=False):
+        with self.lock:
+            samples = self.visualization_samples.copy()
+            rate = self.sample_rate
+            silent = not self.instrument or self.state.output != "device"
+        if silent:
+            samples.fill(0)
+        pitch = []
+        for bus in samples:
+            channel = int(np.argmax(np.sum(bus * bus, axis=0)))
+            values = bus[:, channel].reshape(1024, 4).mean(axis=1)
+            pitch.append(values if packed else values.astype(float).round(5).tolist())
+        if packed:
+            # Float arrays avoid expensive per-sample JSON float formatting on the Pi.
+            def encode(values):
+                return base64.b64encode(np.asarray(values, dtype="<f4").tobytes()).decode("ascii")
+
+            return {
+                "type": "visualization",
+                "encoding": "float32-base64",
+                "sample_rate": rate,
+                "channel": [encode(side) for side in samples[0, -window_size:].T],
+                "master": [encode(side) for side in samples[1, -window_size:].T],
+                "pitch": {
+                    "sample_rate": rate / 4,
+                    "channel": encode(pitch[0]),
+                    "master": encode(pitch[1]),
+                },
+            }
+        return {
+            "type": "visualization",
+            "sample_rate": rate,
+            "channel": samples[0, -window_size:].T.astype(float).round(8).tolist(),
+            "master": samples[1, -window_size:].T.astype(float).round(8).tolist(),
+            "pitch": {"sample_rate": rate / 4, "channel": pitch[0], "master": pitch[1]},
+        }
+
+    def read_meters(self):
+        """Consume interval peaks so short transients survive slower UI publishing."""
+        with self.lock:
+            channel, master = self.meter_peaks
+            self.meter_peaks = [[0.0, 0.0], [0.0, 0.0]]
+            return {
+                "channel": min(1, max(channel)),
+                "master": min(1, max(master)),
+                "channel_stereo": channel,
+                "master_stereo": master,
+                "underruns": self.underruns,
+            }
 
     def _audio_callback(self, outdata, frames, timing, status):
         if status:

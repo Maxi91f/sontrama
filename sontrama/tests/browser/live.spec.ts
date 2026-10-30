@@ -115,8 +115,7 @@ test("WASM Banks produces audio from PC and pointer keys, then releases notes", 
   await expect(
     page.getByRole("button", { name: "Preview activado", exact: true }),
   ).toHaveAttribute("aria-pressed", "true", { timeout: 30000 });
-  await page.getByText("Teclado de prueba", { exact: true }).click();
-  await expect(page.locator(".keyboard-head button")).toHaveCount(1);
+  await expect(page.locator(".keyboard-head #capture-keyboard")).toHaveCount(1);
   await page
     .getByRole("button", { name: "Capturar teclado", exact: true })
     .click();
@@ -142,7 +141,7 @@ test("WASM Banks produces audio from PC and pointer keys, then releases notes", 
   await expect(page.locator('[data-note="61"]')).toHaveClass(/held/);
   await page.keyboard.up("s");
   const key = page.getByRole("button", { name: "Do4", exact: true });
-  await key.hover({ position: { x: 5, y: 110 } });
+  await key.hover({ position: { x: 5, y: 85 } });
   await page.mouse.down();
   await expect(key).toHaveClass(/held/);
   await page.mouse.up();
@@ -224,7 +223,6 @@ test("browser audition falls back to the main-thread engine without AudioWorklet
   await expect(
     page.getByRole("button", { name: "Preview activado", exact: true }),
   ).toBeVisible({ timeout: 30000 });
-  await page.getByText("Teclado de prueba", { exact: true }).click();
   await page
     .getByRole("button", { name: "Capturar teclado", exact: true })
     .click();
@@ -248,7 +246,6 @@ test("PC rows continue across octaves and aliases share note lifetime", async ({
 }) => {
   await page.goto("/");
   await expect(page.locator("#connection")).toHaveText("Conectado");
-  await page.getByText("Teclado de prueba", { exact: true }).click();
   await page
     .getByRole("button", { name: "Capturar teclado", exact: true })
     .click();
@@ -334,7 +331,6 @@ test("capture and preview preferences survive reload and synchronize across brow
   await expect(
     page.getByRole("button", { name: "Preview activado", exact: true }),
   ).toBeVisible({ timeout: 30000 });
-  await page.getByText("Teclado de prueba", { exact: true }).click();
   await page
     .getByRole("button", { name: "Capturar teclado", exact: true })
     .click();
@@ -342,7 +338,7 @@ test("capture and preview preferences survive reload and synchronize across brow
   await expect(
     page.getByRole("button", { name: "Teclado capturado", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator(".keyboard-drawer")).toHaveAttribute("open", "");
+  await expect(page.locator(".dock-keyboard")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Preview activado", exact: true }),
   ).toHaveAttribute("aria-pressed", "true", { timeout: 30000 });
@@ -404,7 +400,6 @@ test("incoming MIDI highlights chords without browser preview and releases on di
 }) => {
   await page.goto("/");
   await expect(page.locator("#connection")).toHaveText("Conectado");
-  await page.getByText("Teclado de prueba", { exact: true }).click();
   await page.evaluate(async () => {
     const socket = new WebSocket(
       `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`,

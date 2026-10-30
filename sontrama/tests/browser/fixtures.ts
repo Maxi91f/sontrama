@@ -48,8 +48,21 @@ export const test = base.extend<{ sharedConfiguration: void }>({
       await request.patch("/api/settings", {
         data: {
           interface: { language: "es" },
-          keyboard: { capture: false, velocity: 100, labels: "shortcuts" },
+          keyboard: {
+            capture: false,
+            panel_octave: 0,
+            velocity: 100,
+            labels: "shortcuts",
+          },
           browser_preview: false,
+          visualizations: {
+            widgets: [],
+            dock_order: ["keyboard"],
+            dock_positions: {},
+            keyboard_width: 600,
+            collapsed: false,
+            active: "keyboard",
+          },
         },
       });
       try {

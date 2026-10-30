@@ -1,3 +1,4 @@
+import base64
 import json
 import struct
 from pathlib import Path
@@ -386,3 +387,159 @@ def test_language_is_shared_and_persisted_without_translating_api_errors(studio,
         ConfigurationService(Studio(studio.catalog, studio.store)).settings.interface.language
         == language
     )
+
+
+def test_visualization_layout_persists_broadcasts_and_validates(studio):
+    widget = {
+        "id": "scope-1",
+        "kind": "oscilloscope",
+        "bus": "master",
+        "width": 3,
+        "height": 320,
+        "pinned": True,
+        "paused": False,
+        "scale": 2,
+    }
+    with TestClient(create_app(studio, audio=False, midi=False)) as client:
+        with client.websocket_connect("/ws") as socket:
+            receive_type(socket, "settings")
+            response = client.patch(
+                "/api/settings",
+                json={
+                    "visualizations": {
+                        "widgets": [widget],
+                        "active": "scope-1",
+                        "collapsed": True,
+                    }
+                },
+            )
+            assert response.status_code == 200
+            saved = response.json()["settings"]["visualizations"]
+            assert receive_type(socket, "settings")["settings"]["visualizations"] == saved
+            persisted = json.loads(studio.store.path.with_name("settings.json").read_text())
+            assert persisted["visualizations"] == saved
+            assert saved["dock_order"] == ["keyboard", "scope-1"]
+            reordered = client.patch(
+                "/api/settings",
+                json={
+                    "visualizations": {"dock_order": ["scope-1", "scope-1", "missing", "keyboard"]}
+                },
+            )
+            assert reordered.json()["settings"]["visualizations"]["dock_order"] == [
+                "scope-1",
+                "keyboard",
+            ]
+            for invalid in (
+                [widget, widget],
+                [{**widget, "width": 4}],
+                [{**widget, "id": "<img src=x>"}],
+                [widget] * 13,
+            ):
+                assert (
+                    client.patch(
+                        "/api/settings", json={"visualizations": {"widgets": invalid}}
+                    ).status_code
+                    == 422
+                )
+            positioned = client.patch(
+                "/api/settings",
+                json={"visualizations": {"dock_positions": {"keyboard": 400, "missing": 50}}},
+            )
+            assert positioned.json()["settings"]["visualizations"]["dock_positions"] == {
+                "keyboard": 400
+            }
+            cleared = client.patch("/api/settings", json={"visualizations": {"dock_positions": {}}})
+            assert cleared.json()["settings"]["visualizations"]["dock_positions"] == {}
+            for position in (-1, 16385):
+                assert (
+                    client.patch(
+                        "/api/settings",
+                        json={"visualizations": {"dock_positions": {"keyboard": position}}},
+                    ).status_code
+                    == 422
+                )
+            migrated = client.patch(
+                "/api/settings", json={"visualizations": {"keyboard_width": 360}}
+            )
+            assert migrated.status_code == 200
+            assert migrated.json()["settings"]["visualizations"]["keyboard_width"] == 360
+            for width in (279, 1201):
+                assert (
+                    client.patch(
+                        "/api/settings", json={"visualizations": {"keyboard_width": width}}
+                    ).status_code
+                    == 422
+                )
+            for octave in (-6, 5):
+                assert (
+                    client.patch(
+                        "/api/settings", json={"keyboard": {"panel_octave": octave}}
+                    ).status_code
+                    == 422
+                )
+            for width in (219, 801):
+                assert (
+                    client.patch(
+                        "/api/settings",
+                        json={"visualizations": {"widgets": [{**widget, "dock_width": width}]}},
+                    ).status_code
+                    == 422
+                )
+            response = client.patch("/api/settings", json={"visualizations": {"widgets": []}})
+            assert response.json()["settings"]["visualizations"]["active"] == "keyboard"
+
+
+def test_visualization_stream_requires_subscription_and_stops_after_disconnect(studio):
+    with TestClient(create_app(studio, audio=False, midi=False)) as client:
+        with client.websocket_connect("/ws") as socket:
+            receive_type(socket, "settings")
+            assert not studio.visualization_enabled
+            socket.send_json({"type": "visualization_subscribe", "enabled": "yes"})
+            assert receive_type(socket, "error")["code"] == "invalid_midi_message"
+            socket.send_json({"type": "visualization_subscribe", "enabled": True})
+            frame = receive_type(socket, "visualization")
+            assert studio.visualization_enabled
+            assert frame["encoding"] == "float32-base64"
+            assert len(base64.b64decode(frame["master"][0])) == 1024 * 4
+            with client.websocket_connect("/ws") as second:
+                second.send_json({"type": "visualization_subscribe", "enabled": True})
+                receive_type(second, "visualization")
+                socket.send_json({"type": "visualization_subscribe", "enabled": False})
+                receive_type(socket, "meters")
+                assert studio.visualization_enabled
+        assert not studio.visualization_enabled
+
+
+def test_spectral_ranges_are_validated_and_large_windows_are_negotiated(studio):
+    with TestClient(create_app(studio, audio=False, midi=False)) as client:
+        widget = {
+            "id": "fft",
+            "kind": "spectrum",
+            "spectral": {"fft_size": 4096, "window": "blackman", "history_seconds": 32},
+        }
+        response = client.patch("/api/settings", json={"visualizations": {"widgets": [widget]}})
+        assert response.status_code == 200
+        for invalid in (
+            {"fft_size": 300},
+            {"frequency_min": 500, "frequency_max": 100},
+            {"smoothing": 1.5},
+        ):
+            assert (
+                client.patch(
+                    "/api/settings",
+                    json={"visualizations": {"widgets": [{**widget, "spectral": invalid}]}},
+                ).status_code
+                == 422
+            )
+        with client.websocket_connect("/ws") as socket:
+            receive_type(socket, "settings")
+            socket.send_json(
+                {"type": "visualization_subscribe", "enabled": True, "window_size": 4096}
+            )
+            frame = receive_type(socket, "visualization")
+            assert len(base64.b64decode(frame["channel"][0])) == 4096 * 4
+            assert len(base64.b64decode(frame["pitch"]["channel"])) == 1024 * 4
+            socket.send_json(
+                {"type": "visualization_subscribe", "enabled": True, "window_size": 8192}
+            )
+            assert receive_type(socket, "error")["code"] == "invalid_midi_message"

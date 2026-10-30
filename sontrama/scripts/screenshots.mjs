@@ -67,24 +67,23 @@ try {
   await page.evaluate(() => document.fonts.ready);
   // Save notifications are transient overlays, not part of the illustrated controls.
   const captureStyle = ".settings-toast { visibility: hidden !important; }";
-  const drawer = page.locator(".keyboard-drawer");
+  const drawer = page.locator(".bottom-dock");
   const waitForToast = () =>
     page.locator(".settings-toast").waitFor({ state: "hidden" });
   const setDrawer = async (open) => {
-    if ((await drawer.evaluate((element) => element.open)) !== open)
-      await page.getByText("Test keyboard", { exact: true }).click();
-    if (!open) {
-      await expect
-        .poll(
-          async () =>
-            (await (await fetch(`${baseURL}/api/settings`)).json()).settings
-              .keyboard.capture,
-        )
-        .toBe(false);
-      if (await drawer.evaluate((element) => element.open))
-        await page.getByText("Test keyboard", { exact: true }).click();
-    }
-    await expect(drawer).toHaveJSProperty("open", open);
+    if ((await drawer.getAttribute("data-collapsed")) === String(open))
+      await drawer.locator('[data-visual-action="collapse"]').click();
+    await expect(drawer).toHaveAttribute("data-collapsed", String(!open));
+  };
+  const fitPage = async () => {
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const studio = await page.locator(".studio").boundingBox();
+    const dock = await drawer.boundingBox();
+    await page.setViewportSize({
+      width: page.viewportSize().width,
+      height: Math.ceil(studio.y + studio.height + dock.height + 32),
+    });
+    await page.evaluate(() => new Promise(requestAnimationFrame));
   };
   const capture = async (name) => {
     await waitForToast();
@@ -92,19 +91,19 @@ try {
     await page
       .locator(":focus")
       .evaluateAll((elements) => elements.forEach((element) => element.blur()));
-    // Bounding boxes use viewport coordinates; reset scrolling before a page crop.
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.evaluate(() => new Promise(requestAnimationFrame));
+    // Fit the content above the fixed dock so full-page captures do not overlap it.
+    await fitPage();
     const box = await page.locator(".studio").boundingBox();
+    const viewport = page.viewportSize();
+    const top = Math.max(0, box.y - 12);
     await page.screenshot({
       style: captureStyle,
       path: path.join(assets, name),
-      fullPage: true,
       clip: {
-        x: box.x - 12,
-        y: box.y - 12,
-        width: box.width + 28,
-        height: box.height + 28,
+        x: 0,
+        y: top,
+        width: viewport.width,
+        height: viewport.height - top,
       },
     });
   };
@@ -139,6 +138,7 @@ try {
     .getByRole("button", { name: "Remove Filter", exact: true })
     .waitFor();
   await waitForToast();
+  await fitPage();
   await page.locator(".mixer-chain").screenshot({
     path: path.join(assets, "effects-chain.png"),
     style: captureStyle,
@@ -203,6 +203,7 @@ try {
           .getAttribute("aria-valuenow"),
       ) > 0,
   );
+  await fitPage();
   await page
     .locator("#panel-mixer")
     .screenshot({ path: path.join(assets, "mixer.png"), style: captureStyle });
@@ -222,7 +223,7 @@ try {
   await waitForToast();
 
   const idle = path.join(temporary, "midi-idle.png");
-  const keyboard = page.locator(".keyboard-drawer");
+  const keyboard = page.locator(".dock-keyboard");
   await page.mouse.move(0, 0);
   await keyboard.screenshot({ path: idle, style: captureStyle });
   const animation = ["-delay", "80", idle];
@@ -248,6 +249,74 @@ try {
     "Optimize",
     path.join(assets, "midi.gif"),
   ]);
+  // Capture analyzers driven by real preview audio, without changing local state.
+  const response = await fetch(`${baseURL}/api/settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      visualizations: {
+        collapsed: false,
+        keyboard_width: 460,
+        dock_order: ["demo-vu", "keyboard", "demo-stereo"],
+        widgets: [
+          { id: "demo-scope", kind: "oscilloscope", width: 1, height: 240 },
+          { id: "demo-fft", kind: "spectrum", width: 1, height: 240 },
+          { id: "demo-spectrum", kind: "spectrogram", width: 1, height: 240 },
+          {
+            id: "demo-correlation",
+            kind: "correlation",
+            width: 1,
+            height: 240,
+          },
+          { id: "demo-tuner", kind: "tuner", width: 1, height: 240 },
+          { id: "demo-midi", kind: "midi", width: 1, height: 240 },
+          {
+            id: "demo-stereo",
+            kind: "vectorscope",
+            width: 1,
+            height: 240,
+            pinned: true,
+            dock_width: 300,
+          },
+          {
+            id: "demo-vu",
+            kind: "vu",
+            width: 1,
+            height: 240,
+            pinned: true,
+            dock_width: 300,
+            meter_style: "needle",
+          },
+        ],
+      },
+    }),
+  });
+  if (!response.ok) throw new Error("Unable to configure visualizations");
+  await page.getByRole("tab", { name: "Output", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Enable preview", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Preview enabled", exact: true })
+    .waitFor();
+  await page.getByRole("tab", { name: "Visualizations", exact: true }).click();
+  await page.locator('.visual-widget[data-widget="demo-vu"]').waitFor();
+  for (const notes of progression) {
+    await chord(notes, true);
+    await page.waitForTimeout(650);
+    await chord(notes, false);
+  }
+  // A single sustained A gives the tuner a clear reading in the overview.
+  await chord([69], true);
+  await page.waitForTimeout(600);
+  await capture("visualizations.png");
+  await page.getByRole("tab", { name: "Mixer", exact: true }).click();
+  await waitForToast();
+  await drawer.screenshot({
+    path: path.join(assets, "monitor-bar.png"),
+    style: captureStyle,
+  });
+  await chord([69], false);
   await page.evaluate(() => window.midiDemoSource.close());
   await setDrawer(false);
   await page

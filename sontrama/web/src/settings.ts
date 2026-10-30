@@ -1,3 +1,4 @@
+import type { VisualizationSettings } from "./visualizations";
 import {
   t,
   setLanguage,
@@ -13,6 +14,7 @@ export interface Configuration {
   interface: { language: "es" | "en"; motion: "system" | "reduced" | "full" };
   keyboard: {
     capture: boolean;
+    panel_octave: number;
     velocity: number;
     labels: "shortcuts" | "notes" | "both" | "none";
   };
@@ -25,6 +27,7 @@ export interface Configuration {
   };
   library: { paths: string[] };
   browser_preview: boolean;
+  visualizations: VisualizationSettings;
 }
 interface Resources {
   audio_devices: { id: string; name: string; api: string }[];
@@ -46,11 +49,24 @@ export interface SettingsMessage {
 }
 export const sharedSettings: Configuration = {
   interface: { language: "en", motion: "system" },
-  keyboard: { capture: false, velocity: 100, labels: "shortcuts" },
+  keyboard: {
+    capture: false,
+    panel_octave: 0,
+    velocity: 100,
+    labels: "shortcuts",
+  },
   audio: { device: null, sample_rate: 44100, block_size: 256 },
   midi: { devices: {} },
   library: { paths: [] },
   browser_preview: false,
+  visualizations: {
+    widgets: [],
+    dock_order: ["keyboard"],
+    dock_positions: {},
+    keyboard_width: 600,
+    collapsed: false,
+    active: "keyboard",
+  },
 };
 const sections = [
   ["interface", "settings.interface"],

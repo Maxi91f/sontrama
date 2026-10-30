@@ -36,7 +36,6 @@ for (const fallback of [false, true]) {
         page.getByRole("button", { name: "Preview activado", exact: true }),
       ).toBeVisible({ timeout: 30000 });
       expect(fonts).toEqual([]);
-      await page.getByText("Teclado de prueba", { exact: true }).click();
       await page
         .getByRole("button", { name: "Capturar teclado", exact: true })
         .click();

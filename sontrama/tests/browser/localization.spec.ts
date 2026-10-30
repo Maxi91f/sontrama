@@ -16,7 +16,6 @@ test("language changes sync across screens, preserve notes and localize dynamic 
     await phone.goto("/");
     await expect(page.getByLabel("Idioma")).toHaveValue("es");
     await request.patch("/api/session", { data: { instrument: "three-osc" } });
-    await phone.locator(".keyboard-drawer summary").click();
     await phone.locator('[data-note="60"]').focus();
     await phone.keyboard.down("Enter");
     await expect(phone.locator('[data-note="60"]')).toHaveClass(/held/);

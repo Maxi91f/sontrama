@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 import sounddevice as sd
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .catalog import BankCatalog
 from .errors import ApplicationError, Diagnostic, error_detail
@@ -25,6 +25,7 @@ class KeyboardSettings(StrictModel):
     capture: bool = False
     velocity: int = Field(default=100, ge=1, le=127)
     labels: Literal["shortcuts", "notes", "both", "none"] = "shortcuts"
+    panel_octave: int = Field(default=0, ge=-5, le=4)
 
 
 class AudioSettings(StrictModel):
@@ -46,6 +47,80 @@ class LibrarySettings(StrictModel):
     paths: list[str] = Field(default_factory=list, max_length=32)
 
 
+class SpectralSettings(StrictModel):
+    fft_size: Literal[256, 512, 1024, 2048, 4096] = 1024
+    refresh_rate: Literal[5, 10, 20] = 20
+    frequency_min: float = Field(default=40, ge=20, le=20000)
+    frequency_max: float = Field(default=20000, ge=40, le=24000)
+    frequency_scale: Literal["log", "linear"] = "log"
+    window: Literal["hann", "hamming", "blackman", "rectangular"] = "hann"
+    smoothing: float = Field(default=0.5, ge=0, le=0.95)
+    db_min: float = Field(default=-90, ge=-120, le=-20)
+    db_max: float = Field(default=0, ge=-18, le=12)
+    history_seconds: Literal[2, 4, 8, 16, 32] = 8
+
+    @model_validator(mode="after")
+    def validate_ranges(self):
+        if self.frequency_min >= self.frequency_max or self.db_min >= self.db_max:
+            raise ValueError("Spectral ranges must have increasing limits")
+        return self
+
+
+class VisualizationWidget(StrictModel):
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+    kind: Literal[
+        "oscilloscope",
+        "spectrum",
+        "spectrogram",
+        "vectorscope",
+        "correlation",
+        "tuner",
+        "midi",
+        "vu",
+    ] = "oscilloscope"
+    bus: Literal["channel", "master"] = "master"
+    width: Literal[1, 2, 3] = 2
+    height: Literal[160, 240, 320] = 240
+    dock_width: int = Field(default=300, ge=220, le=800)
+    pinned: bool = False
+    paused: bool = False
+    scale: Literal[0.5, 1, 2, 4] = 1
+    meter_style: Literal["bars", "needle"] = "bars"
+    spectral: SpectralSettings = Field(default_factory=SpectralSettings)
+
+
+class VisualizationSettings(StrictModel):
+    keyboard_width: int = Field(default=600, ge=280, le=1200)
+    widgets: list[VisualizationWidget] = Field(default_factory=list, max_length=12)
+    dock_positions: dict[str, int] = Field(default_factory=dict, max_length=13)
+    dock_order: list[str] = Field(default_factory=lambda: ["keyboard"], max_length=13)
+    collapsed: bool = False
+    active: str = Field(default="keyboard", max_length=64)
+
+    @model_validator(mode="after")
+    def validate_widgets(self):
+        identifiers = [widget.id for widget in self.widgets]
+        if len(set(identifiers)) != len(identifiers) or "keyboard" in identifiers:
+            raise ValueError("Visualization identifiers must be unique and cannot be keyboard")
+        available = ["keyboard", *(widget.id for widget in self.widgets if widget.pinned)]
+        if any(position < 0 or position > 16384 for position in self.dock_positions.values()):
+            raise ValueError("Dock positions must be between 0 and 16384 pixels")
+        self.dock_positions = {
+            key: value for key, value in self.dock_positions.items() if key in available
+        }
+        self.dock_order = list(
+            dict.fromkeys(identifier for identifier in self.dock_order if identifier in available)
+        )
+        self.dock_order.extend(
+            identifier for identifier in available if identifier not in self.dock_order
+        )
+        if self.active != "keyboard" and not any(
+            widget.id == self.active and widget.pinned for widget in self.widgets
+        ):
+            self.active = "keyboard"
+        return self
+
+
 class Configuration(StrictModel):
     interface: InterfaceSettings = Field(default_factory=InterfaceSettings)
     keyboard: KeyboardSettings = Field(default_factory=KeyboardSettings)
@@ -53,6 +128,7 @@ class Configuration(StrictModel):
     midi: MidiSettings = Field(default_factory=MidiSettings)
     library: LibrarySettings = Field(default_factory=LibrarySettings)
     browser_preview: bool = False
+    visualizations: VisualizationSettings = Field(default_factory=VisualizationSettings)
 
 
 def midi_device_id(name: str, *, browser=False) -> str:
@@ -64,6 +140,13 @@ def midi_device_id(name: str, *, browser=False) -> str:
 def merge_settings(previous: dict, patch: dict) -> dict:
     result = previous.copy()
     for key, value in patch.items():
+        if key == "dock_positions" and isinstance(value, dict):
+            result[key] = {
+                identifier: position
+                for identifier, position in value.items()
+                if position is not None
+            }
+            continue
         if key == "devices" and isinstance(value, dict):
             devices = result.get(key, {}).copy()
             for identifier, profile in value.items():

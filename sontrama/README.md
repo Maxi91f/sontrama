@@ -20,7 +20,8 @@ Open <http://127.0.0.1:8081>. No Internet connection is required after installat
 and building. FluidSynth WASM assets are served locally.
 To listen on this computer, open **Output** and enable **Browser preview**.
 This is an additional monitor and does not change the server's main output.
-In **Test keyboard**, **Capture keyboard** toggles PC keyboard capture only.
+The fixed **Monitor bar** contains the test keyboard. **Capture keyboard**
+toggles PC keyboard capture only.
 The on-screen keyboard also supports mouse and touch input.
 
 Z/X/C/V/B/N/M play white keys starting at C4; S/D/G/H/J play black keys.
@@ -60,6 +61,12 @@ Workspace-level setup, development and deployment scripts are documented in
   Master level/pan controls. Master mute silences the final signal, including
   effect tails. Solo states are saved; with one source and one output bus,
   they do not change which sources are audible.
+- **Visualizations**: add audio analyzers and a MIDI monitor through a modal picker, choose
+  Channel 01 or Master, drag views around the grid, resize them from the corner,
+  then pin compact copies to the Monitor bar. Pinned views share the original's signal, zoom and pause
+  settings. The bar stays available across tabs and settings; on mobile, its
+  selector switches between the keyboard and pinned views. Dashboard layout,
+  pins and bar preferences are shared across browsers and survive restart.
 - **Output**: the server's main output and browser audio preview.
   The server keeps playing when the page closes. Preview and keyboard capture
   preferences are shared across connected browsers. If autoplay is blocked, audio
@@ -72,6 +79,66 @@ connected to the same server. Preview does not reroute the server output.
 Web MIDI requires HTTPS or localhost and a compatible browser; USB MIDI on the
 Pi does not depend on Web MIDI. Over LAN HTTP, browser audio falls back to the
 main thread when AudioWorklet is unavailable; HTTPS enables AudioWorklet.
+
+Meters show stereo sample peaks after each bus's effects, pan and level controls.
+They use a −60 to 0 dBFS scale: green below −12 dBFS, yellow up to −3 dBFS,
+and red above it. The peak marker holds for 900 ms before falling; reaching
+full scale lights the overload indicator for two seconds. Server readings
+preserve the highest peak between broadcasts. With preview running, meters
+show the browser signal; otherwise they show the server signal. Switching
+sources clears held peaks. These are sample-peak meters, not true-peak or
+loudness meters.
+
+Drag the grip beside a view's title to reorder it; drag its lower-right corner
+to snap its width and height to the grid. Escape cancels an active gesture.
+The handles also support arrow keys. Dock items can be reordered independently of the dashboard, including
+placing them in empty space. A shadow previews the committed position. All dock
+items share a yellow panel and height. The keyboard's width reveals more or fewer
+fixed-size keys. Its octave buttons shift only the on-screen panel; PC letter keys
+and external MIDI retain their pitches. Dragging across keys releases the previous
+note and plays the next; leaving the piano releases it too.
+
+The monitor bar always stays in one row and scrolls horizontally when panels do
+not fit. Resize handles stop at its visible boundary. Positions, widths and panel
+octave are shared across browsers. The collapsed bar is a thin strip with a
+chevron toggle. Layout changes are saved on release.
+
+The visualization picker includes:
+
+| View               | Reading                                                                                                                                                          |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Oscilloscope       | L/R waveforms with a rising zero-crossing trigger and vertical zoom.                                                                                             |
+| Spectrum           | Configurable FFT, window function, frequency/dB range, axis scale, smoothing and refresh rate.                                                                   |
+| Spectrogram        | Configurable frequency history from 2 to 32 seconds, with intensity shown in color.                                                                              |
+| Vectorscope        | L/R relationship: mono is vertical, opposite polarity is horizontal.                                                                                             |
+| Stereo correlation | Normalized channel correlation from −1 to +1; silence or a missing channel has no reading.                                                                       |
+| Tuner              | Monophonic note, frequency and cents relative to A4 = 440 Hz, from 50 to 2,000 Hz.                                                                               |
+| MIDI monitor       | The last 64 routed MIDI events, including velocity, CC, pressure, program changes and pitch bend.                                                                |
+| VU meter           | Stereo sample-peak bars or a smoothed RMS needle, switchable on each widget. The needle uses 0 VU = −18 dBFS RMS; it is not a loudness or true-peak measurement. |
+
+Spectrum and spectrogram expose **Analysis settings** with 256–4,096 sample FFTs,
+Hann/Hamming/Blackman/rectangular windows, 5/10/20 Hz display refresh, linear or
+logarithmic frequency axes, frequency and dBFS limits, and smoothing. Spectrogram
+scroll speed is expressed as the time across the full width (2–32 seconds).
+The source-rate readout shows the actual sampling rate and FFT resolution in Hz
+per bin. It is not a per-view audio-rate switch: native output rate is configured
+in Audio settings, while preview uses its browser AudioContext rate. Larger FFTs
+use real contiguous samples, including when viewing server audio.
+
+All views can be paused and pinned; their shared configuration persists. Audio
+views inspect Channel 01 or Master using the same source as the mixer meters.
+The MIDI monitor follows received WebSocket MIDI independently of audio preview,
+and does not request audio frames by itself. Clearing it only clears that widget's
+local history. Histories and frozen samples are transient browser state.
+
+The server captures bounded post-level/pan sample windows only while subscribed.
+It sends 1,024 stereo samples by default, negotiating up to 4,096 when visible
+spectral views request higher resolution, plus a decimated mono window for bass
+pitch analysis. Sample windows travel as little-endian float32 blocks encoded in
+base64, avoiding per-sample JSON float formatting on the Pi. The strongest channel is used for tuning, avoiding cancellation
+between opposite-polarity channels. Preview supplies equivalent local windows.
+FFT, pitch detection, rendering and network serialization stay outside the audio
+callback. The tuner is intended for one sustained note at a time.
 
 ## Effects
 

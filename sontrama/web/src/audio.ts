@@ -17,6 +17,8 @@ export class BrowserInstrument {
   private masterPan: StereoPannerNode | null = null;
   channelStereo: AnalyserNode[] = [];
   masterStereo: AnalyserNode[] = [];
+  channelPitch: AnalyserNode[] = [];
+  masterPitch: AnalyserNode[] = [];
   private channel: GainNode | null = null;
   private master: GainNode | null = null;
   private limiter: WaveShaperNode | null = null;
@@ -69,18 +71,20 @@ export class BrowserInstrument {
       this.limiter.curve = curve;
       this.channel.connect(this.channelMeter);
       this.masterPan.connect(this.master);
-      const stereoMeters = (node: AudioNode) => {
+      const stereoMeters = (node: AudioNode, fftSize = 2048) => {
         const splitter = context.createChannelSplitter(2);
         node.connect(splitter);
         return [0, 1].map((channel) => {
           const analyser = context.createAnalyser();
-          analyser.fftSize = 256;
+          analyser.fftSize = fftSize;
           splitter.connect(analyser, channel);
           return analyser;
         });
       };
       this.channelStereo = stereoMeters(this.channel);
       this.masterStereo = stereoMeters(this.master);
+      this.channelPitch = stereoMeters(this.channel, 4096);
+      this.masterPitch = stereoMeters(this.master, 4096);
       this.master
         .connect(this.masterMeter)
         .connect(pre)
@@ -251,6 +255,8 @@ export class BrowserInstrument {
     this.masterEffects = [];
     this.channelStereo = [];
     this.masterStereo = [];
+    this.channelPitch = [];
+    this.masterPitch = [];
     this.channelMeter = null;
     this.masterMeter = null;
     this.source?.disconnect();
