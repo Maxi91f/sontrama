@@ -1,7 +1,7 @@
 export interface Signal {
   samples: Float32Array[];
   sampleRate: number;
-  source: "preview" | "server";
+  source: "preview";
   pitch?: Float32Array;
   pitchRate?: number;
   peaks?: number[];

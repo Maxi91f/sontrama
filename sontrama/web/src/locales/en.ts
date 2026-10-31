@@ -1,4 +1,11 @@
 export default {
+  "errors.previewCoreLoad":
+    "Could not load the shared audio engine. Rebuild the app and refresh.",
+  "errors.previewCoreMismatch":
+    "The server and browser audio engines differ. Refresh the page after rebuilding.",
+  "errors.previewBanksMismatch":
+    "Banks preview needs FluidSynth {{expected}} on the server (found {{actual}}). Run the pinned audio setup.",
+
   "visuals.analysisSettings": "Analysis settings",
   "visuals.fftSize": "FFT size",
   "visuals.window": "Window function",
@@ -56,7 +63,6 @@ export default {
   "visuals.pitchBend": "Pitch bend",
   "visuals.pressure": "Pressure",
   "visuals.program": "Program",
-  "visuals.midiSource": "Received MIDI",
   "visuals.heldNotes": "Keys down",
   "visuals.waitingMidi": "Waiting for MIDI",
   "visuals.events": "events",
@@ -104,8 +110,21 @@ export default {
   "visuals.collapse": "Collapse",
   "visuals.expand": "Expand",
   "visuals.show": "Show",
-  "visuals.preview": "Browser preview",
-  "visuals.server": "Server audio",
+  "visuals.simulation.off":
+    "Enable local simulation to see this visualization.",
+  "visuals.simulation.loading": "Loading local simulation…",
+  "visuals.simulation.suspended":
+    "Resume local simulation to see this visualization.",
+  "visuals.simulation.unavailable":
+    "Local simulation could not start. Try again.",
+  "visuals.simulation.ready": "",
+  "visuals.enableSimulation": "Enable local simulation",
+  "visuals.resumeSimulation": "Resume simulation",
+  "visuals.retrySimulation": "Retry simulation",
+  "settings.simulation": "Local simulation",
+  "settings.simulationHint":
+    "Runs the instrument and effects in this browser for visualizations and preview audio.",
+  "output.previewVolume": "Preview volume",
   "visuals.waiting": "Waiting for signal",
 
   "mixer.meterReading": "Level {{level}} dBFS · Peak {{peak}} dBFS",
@@ -315,10 +334,6 @@ export default {
   "output.preview": "Browser preview",
   "output.previewHint":
     "Listen to a preview here, independently of the main output.",
-  "output.activate": "Enable preview",
-  "output.loading": "Loading preview…",
-  "output.resume": "Resume preview",
-  "output.enabled": "Preview enabled",
   "settings.interface": "Interface",
   "settings.keyboard": "Keyboard",
   "settings.audio": "Audio",

@@ -27,6 +27,8 @@ export interface Configuration {
   };
   library: { paths: string[] };
   browser_preview: boolean;
+  preview_volume: number;
+  preview_muted: boolean;
   visualizations: VisualizationSettings;
 }
 interface Resources {
@@ -58,7 +60,9 @@ export const sharedSettings: Configuration = {
   audio: { device: null, sample_rate: 44100, block_size: 256 },
   midi: { devices: {} },
   library: { paths: [] },
-  browser_preview: false,
+  browser_preview: true,
+  preview_volume: 1,
+  preview_muted: true,
   visualizations: {
     widgets: [],
     dock_order: ["keyboard"],
@@ -173,7 +177,7 @@ export function initializeSettings(
       );
       fields.innerHTML =
         title +
-        `<div class="settings-form"><label class="field">${t("settings.device")}<select id="audio-device">${option("", t("settings.defaultDevice"), audio.device ?? "")}${resources.audio_devices.map((device) => option(device.id, `${device.name} · ${device.api}`, audio.device ?? "")).join("")}${audio.device && !known ? option(audio.device, audio.device, audio.device) : ""}</select></label><button type="button" id="refresh-audio">${t("settings.refreshDevices")}</button><label class="field">${t("settings.sampleRate")}<select id="audio-rate">${[44100, 48000].map((rate) => option(rate, `${rate.toLocaleString(config.interface.language)} Hz`, audio.sample_rate)).join("")}</select></label><label class="field">${t("settings.buffer")}<select id="audio-block">${[256, 512, 1024].map((size) => option(size, t("settings.frames", { count: size }), audio.block_size)).join("")}</select></label><p class="muted">${t("settings.applyHint")}${resources.audio_enabled ? "" : t("settings.disabledHint")}</p>${resources.audio_error ? `<p class="muted">${escape(issueText(resources.audio_issue ?? { code: "audio_unavailable", message: resources.audio_error }))}</p>` : ""}<button type="button" id="apply-audio" ${busy ? "disabled" : ""}>${t("settings.applyAudio")}</button></div>`;
+        `<div class="settings-form"><button type="button" id="settings-simulation" aria-pressed="${config.browser_preview}">${t("settings.simulation")}</button><p class="muted">${t("settings.simulationHint")}</p><label class="field">${t("settings.device")}<select id="audio-device">${option("", t("settings.defaultDevice"), audio.device ?? "")}${resources.audio_devices.map((device) => option(device.id, `${device.name} · ${device.api}`, audio.device ?? "")).join("")}${audio.device && !known ? option(audio.device, audio.device, audio.device) : ""}</select></label><button type="button" id="refresh-audio">${t("settings.refreshDevices")}</button><label class="field">${t("settings.sampleRate")}<select id="audio-rate">${[44100, 48000].map((rate) => option(rate, `${rate.toLocaleString(config.interface.language)} Hz`, audio.sample_rate)).join("")}</select></label><label class="field">${t("settings.buffer")}<select id="audio-block">${[256, 512, 1024].map((size) => option(size, t("settings.frames", { count: size }), audio.block_size)).join("")}</select></label><p class="muted">${t("settings.applyHint")}${resources.audio_enabled ? "" : t("settings.disabledHint")}</p>${resources.audio_error ? `<p class="muted">${escape(issueText(resources.audio_issue ?? { code: "audio_unavailable", message: resources.audio_error }))}</p>` : ""}<button type="button" id="apply-audio" ${busy ? "disabled" : ""}>${t("settings.applyAudio")}</button></div>`;
     }
     if (active === "midi")
       fields.innerHTML =
@@ -212,7 +216,7 @@ export function initializeSettings(
       void update(
         {
           keyboard: { capture: legacyPreferences.capture ?? false },
-          browser_preview: legacyPreferences.preview ?? false,
+          browser_preview: true,
         },
         true,
       ).catch(() => {});
@@ -364,6 +368,9 @@ export function initializeSettings(
     };
     for (const id of ["audio-device", "audio-rate", "audio-block"])
       listen(id, "change", audioChange);
+    listen("settings-simulation", "click", () =>
+      save({ browser_preview: !sharedSettings.browser_preview }),
+    );
     listen("refresh-audio", "click", () => void refreshAudio());
     listen("apply-audio", "click", () => void applyAudio());
     listen("soundfont-paths", "input", (event) => {

@@ -1,3 +1,4 @@
+import { MidiPreview } from "./midi-preview";
 import { PanelKeyboard } from "./panel-keyboard";
 import {
   t,
@@ -16,7 +17,7 @@ import {
   dockResizeHandle,
 } from "./visualizations";
 import { StereoMeters } from "./meters";
-import { MixerView } from "./mixer";
+import { MixerView, stereoMeter } from "./mixer";
 import { BrowserInstrument } from "./audio";
 import { threeOscPanel } from "./three-osc-panel";
 import { waveforms } from "./waveform-picker";
@@ -33,7 +34,15 @@ import { effectInfo, type Session, type Snapshot } from "./types";
 document.title = t("page.title");
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const audio = new BrowserInstrument();
+const midiPreview = new MidiPreview(
+  (data) => {
+    highlightMidi(data);
+    if (previewRequested) audio.midi(data, false);
+  },
+  () => audio.panic(),
+);
 const meters = new StereoMeters();
+const serverMeters = new StereoMeters();
 const tabs = [
   ["inputs", "nav.inputs"],
   ["instrument", "nav.instrument"],
@@ -46,6 +55,7 @@ let socket: WebSocket | null = null;
 let reconnect: ReturnType<typeof setTimeout> | undefined;
 let connected = false;
 let previewEnabled = false;
+let previewRequested = false;
 let capturing = false;
 let settingsOpen = false;
 let settingsController: SettingsController | null = null;
@@ -119,22 +129,25 @@ const visualizations = new VisualizationsView(
     await settingsController?.update({ visualizations: configuration });
   },
   () =>
-    audio.ready && previewEnabled && audio.context
+    audio.ready && previewEnabled && audio.context?.state === "running"
       ? {
           analysers: [...audio.channelStereo, ...audio.masterStereo],
           sampleRate: audio.context.sampleRate,
           pitchAnalysers: [...audio.channelPitch, ...audio.masterPitch],
         }
       : null,
-  (enabled, windowSize = 1024) => {
-    if (socket?.readyState === WebSocket.OPEN)
-      socket.send(
-        JSON.stringify({
-          type: "visualization_subscribe",
-          enabled,
-          window_size: windowSize,
-        }),
-      );
+  () =>
+    !sharedSettings.browser_preview
+      ? "off"
+      : starting
+        ? "loading"
+        : audio.context?.state === "suspended"
+          ? "suspended"
+          : audio.ready && previewEnabled
+            ? "ready"
+            : "unavailable",
+  async () => {
+    await setPreview(true);
   },
   releaseAll,
 );
@@ -230,8 +243,8 @@ function render() {
       .map((effect) => ` → ${effectInfo[effect.kind].name}`)
       .join(
         "",
-      )} → ${t("output.server")}</div><p class="muted">${t("output.engine", { engine: stateLabel(snapshot.status.engine), audio: stateLabel(snapshot.status.audio) })}</p><p class="muted">${t("output.underruns")} <span id="underruns">${snapshot.status.underruns}</span></p></section><section class="block"><h3>${t("output.preview")}</h3><p class="muted">${t("output.previewHint")}</p><button type="button" id="browser-preview" data-action="preview" aria-pressed="${previewEnabled}">${t("output.activate")}</button></section></div>`;
-  syncPreviewButton();
+      )} → ${t("output.server")}</div><p class="muted">${t("output.engine", { engine: stateLabel(snapshot.status.engine), audio: stateLabel(snapshot.status.audio) })}</p>${stereoMeter("master")}<p class="muted">${t("output.underruns")} <span id="underruns">${snapshot.status.underruns}</span></p></section><section class="block"><h3>${t("output.preview")}</h3><p class="muted">${t("output.previewHint")}</p><label class="range-label">${t("output.previewVolume")}<output id="preview-volume-value">${Math.round(sharedSettings.preview_volume * 100)}%</output><input type="range" id="preview-volume" aria-label="${t("output.previewVolume")}" min="0" max="100" step="1" value="${sharedSettings.preview_volume * 100}"></label><button type="button" id="preview-mute" data-action="preview-mute" aria-pressed="${sharedSettings.preview_muted}">${t("common.mute")}</button></section></div>`;
+  syncPreviewControls();
   const serverError = (snapshot.status.issues ?? []).map(issueText).join(" · ");
   if (serverError) notice(serverError);
   else if (lastServerError && $("#notice").textContent === lastServerError)
@@ -245,7 +258,9 @@ function accept(state: Snapshot) {
   const reloadFont =
     snapshot?.status.catalog_revision !== undefined &&
     snapshot.status.catalog_revision !== state.status.catalog_revision;
+  if (state.connection_id) midiPreview.connection = state.connection_id;
   snapshot = state;
+  audio.setServerEngine(state.status.engine_contract);
   if (
     previous &&
     ["instrument", "octave", "output", "soundfont", "bank", "program"].some(
@@ -294,27 +309,29 @@ function syncKeyboardButton() {
   button.title = label;
   button.innerHTML = `<span class="capture-label">${label}</span><span class="capture-icon" aria-hidden="true">⌨</span>`;
 }
-function syncPreviewButton() {
-  const button = app.querySelector<HTMLButtonElement>("#browser-preview");
-  if (!button) return;
-  button.disabled = starting;
-  button.setAttribute("aria-pressed", String(previewEnabled));
-  button.setAttribute("aria-busy", String(starting));
-  button.textContent = starting
-    ? t("output.loading")
-    : previewEnabled
-      ? audio.context?.state === "suspended"
-        ? t("output.resume")
-        : t("output.enabled")
-      : t("output.activate");
+function syncPreviewControls() {
+  const button = app.querySelector<HTMLButtonElement>("#preview-mute");
+  button?.setAttribute("aria-pressed", String(sharedSettings.preview_muted));
+  const volume = app.querySelector<HTMLInputElement>("#preview-volume");
+  if (volume && document.activeElement !== volume)
+    volume.value = String(sharedSettings.preview_volume * 100);
+  const value = app.querySelector("#preview-volume-value");
+  if (value)
+    value.textContent = `${Math.round(sharedSettings.preview_volume * 100)}%`;
+  audio.setPreviewOutput(
+    sharedSettings.preview_volume,
+    sharedSettings.preview_muted,
+  );
 }
 async function setPreview(enabled: boolean, automatic = false, persist = true) {
   if (!snapshot || starting) return;
+  previewRequested = enabled;
   starting = true;
   let applied = false;
-  syncPreviewButton();
+  syncPreviewControls();
   try {
     if (enabled) {
+      midiPreview.reset();
       const revision = snapshot.status.catalog_revision;
       await audio.start(snapshot.session, automatic);
       await audio.apply(
@@ -322,41 +339,28 @@ async function setPreview(enabled: boolean, automatic = false, persist = true) {
         revision !== snapshot.status.catalog_revision,
       );
       previewEnabled = true;
-      audio.context?.addEventListener("statechange", syncPreviewButton);
+      audio.context?.addEventListener("statechange", syncPreviewControls);
       notice();
     } else {
       previewEnabled = false;
+      midiPreview.reset();
       await audio.stop();
     }
     if (persist) await settingsController?.update({ browser_preview: enabled });
     applied = true;
   } catch (error) {
-    applied = persist;
+    previewRequested = previewEnabled;
     fail(error);
   } finally {
     starting = false;
-    syncPreviewButton();
+    syncPreviewControls();
     if (applied && sharedSettings.browser_preview !== previewEnabled)
       void setPreview(sharedSettings.browser_preview, true, false);
   }
 }
-async function togglePreview() {
-  if (previewEnabled && audio.context?.state === "suspended") {
-    try {
-      await audio.context.resume();
-      syncPreviewButton();
-    } catch (error) {
-      fail(error);
-    }
-    return;
-  }
-  await setPreview(!previewEnabled);
-}
-
 // A remembered preview can be initialized while autoplay is suspended. Resume
 // on the next local gesture without changing the user's saved preference.
-function resumeRememberedPreview(event: Event) {
-  if ((event.target as Element)?.closest?.("#browser-preview")) return;
+function resumeRememberedPreview() {
   if (sharedSettings.browser_preview && audio.context?.state === "suspended")
     void audio.context.resume().catch(fail);
 }
@@ -366,6 +370,19 @@ window.addEventListener("pointerdown", resumeRememberedPreview, {
 window.addEventListener("keydown", resumeRememberedPreview, { capture: true });
 
 function bindControls() {
+  const volume = app.querySelector<HTMLInputElement>("#preview-volume");
+  volume?.addEventListener("input", () => {
+    $("#preview-volume-value").textContent = `${volume.value}%`;
+    audio.setPreviewOutput(
+      Number(volume.value) / 100,
+      sharedSettings.preview_muted,
+    );
+  });
+  volume?.addEventListener("change", () => {
+    void settingsController
+      ?.update({ preview_volume: Number(volume.value) / 100 })
+      .catch(fail);
+  });
   app
     .querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-field]")
     .forEach((input) => {
@@ -447,7 +464,10 @@ app.addEventListener("click", (event) => {
       return { three_osc: config };
     });
   const action = button.dataset.action;
-  if (action === "preview") void togglePreview();
+  if (action === "preview-mute")
+    void settingsController
+      ?.update({ preview_muted: !sharedSettings.preview_muted })
+      .catch(fail);
   else if (action === "usb")
     void patch((state) => ({ usb_enabled: !state.usb_enabled }));
   else if (action === "browser-midi") void connectMidi();
@@ -493,9 +513,18 @@ app.addEventListener("keydown", (event) => {
 });
 
 function send(data: number[], controller?: string) {
-  if (socket?.readyState === WebSocket.OPEN)
-    socket.send(JSON.stringify({ type: "midi", data, controller }));
-  else notice(t("errors.disconnected"));
+  if (socket?.readyState === WebSocket.OPEN) {
+    const event_id = snapshot
+      ? midiPreview.predict(
+          data,
+          snapshot.session,
+          sharedSettings,
+          controller,
+          previewEnabled && audio.ready,
+        )
+      : undefined;
+    socket.send(JSON.stringify({ type: "midi", data, controller, event_id }));
+  } else notice(t("errors.disconnected"));
 }
 function updateHeld() {
   const notes = new Set([
@@ -688,32 +717,27 @@ function connect() {
     $("#connection").className = "connected";
     notice();
     reportMidiDevices();
-    visualizations.reconnect();
   };
   socket.onmessage = (event) => {
     const message = JSON.parse(event.data);
-    if (message.type === "visualization") visualizations.receive(message);
-    else if (message.type === "state") accept(message);
+    if (message.type === "state") accept(message);
     else if (message.type === "settings") settingsController?.accept(message);
     else if (message.type === "midi") {
       visualizations.midi(message.data);
-      highlightMidi(message.data);
-      if (previewEnabled) audio.midi(message.data, false);
+      midiPreview.receive(message);
+    } else if (message.type === "midi_ack") {
+      midiPreview.acknowledge(message.event_id, message.routed);
     } else if (message.type === "panic") {
       visualizations.silenceMidi();
-      audio.panic();
+      midiPreview.reset();
       held.clear();
       incomingNotes.clear();
       updateHeld();
-    } else if (message.type === "error") notice(issueText(message));
-    else if (message.type === "meters" && !(audio.ready && previewEnabled))
-      meters.accept(
-        "server",
-        message.channel_stereo ?? [message.channel, message.channel],
-        message.master_stereo ?? [message.master, message.master],
-      );
-    if (message.type === "meters")
-      visualizations.receiveLevels(
+    } else if (message.type === "error") {
+      if (message.event_id) midiPreview.acknowledge(message.event_id, []);
+      notice(issueText(message));
+    } else if (message.type === "meters")
+      serverMeters.accept(
         "server",
         message.channel_stereo ?? [message.channel, message.channel],
         message.master_stereo ?? [message.master, message.master],
@@ -724,11 +748,13 @@ function connect() {
   socket.onclose = () => {
     connected = false;
     meters.clear();
+    serverMeters.clear();
     visualizations.silenceMidi();
     incomingNotes.clear();
     releaseAll();
     updateHeld();
-    audio.panic();
+    midiPreview.reset();
+    midiPreview.connection = null;
     $("#connection").textContent = t("connection.reconnecting");
     $("#connection").className = "";
     reconnect = setTimeout(connect, 1500);
@@ -739,7 +765,8 @@ const meterBuffer = new Float32Array(2048);
 let lastMeterSample = -Infinity;
 function browserMeters(now: number) {
   const preview = audio.ready && previewEnabled;
-  meters.useSource(preview ? "preview" : "server");
+  meters.useSource("preview");
+  if (!preview) meters.clear();
   if (preview && now - lastMeterSample >= 32) {
     const peak = (analyser: AnalyserNode) => {
       analyser.getFloatTimeDomainData(meterBuffer);
@@ -754,7 +781,8 @@ function browserMeters(now: number) {
     visualizations.receiveLevels("preview", channel, master);
     lastMeterSample = now;
   }
-  meters.paint(app, now);
+  meters.paint($("#panel-mixer"), now);
+  serverMeters.paint($("#panel-output"), now);
   visualizations.draw(now);
   requestAnimationFrame(browserMeters);
 }
@@ -801,6 +829,7 @@ settingsController = initializeSettings(
       for (const id of [...held.keys()]) noteOff(id);
     capturing = configuration.keyboard.capture;
     visualizations.accept(configuration.visualizations);
+    syncPreviewControls();
     syncKeyboardButton();
     updateKeyboardLabels();
     if (

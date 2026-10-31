@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, setSimulation } from "./fixtures";
 import type { Page } from "@playwright/test";
 async function addVisualization(page: Page, kind: "oscilloscope" | "spectrum") {
   await page.locator('[data-visual-action="picker"]').click();
@@ -30,9 +30,7 @@ test("visualization dashboard shares layout and pinned views while the keyboard 
   try {
     await page.goto("/");
     await page.getByRole("tab", { name: "Output", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Enable preview", exact: true })
-      .click();
+    await setSimulation(page, true);
     await page
       .getByRole("tab", { name: "Visualizations", exact: true })
       .click();
@@ -103,7 +101,7 @@ test("visualization dashboard shares layout and pinned views while the keyboard 
       scopeAgain.getByRole("button", { name: "Pause", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
     await page.keyboard.up("z");
-    await expect(scopeAgain.locator("[data-visual-source]")).toContainText(
+    await expect(scopeAgain.locator("[data-visual-status]")).toContainText(
       "Paused",
     );
     const frozen = await canvas.getAttribute("data-peak");
@@ -191,56 +189,6 @@ test("visualization dashboard shares layout and pinned views while the keyboard 
   } finally {
     await phoneContext.close();
   }
-});
-
-test("server visualization streaming follows visibility and stops when the dock is collapsed", async ({
-  page,
-  request,
-}) => {
-  await request.patch("/api/settings", {
-    data: { interface: { language: "en" } },
-  });
-  await page.addInitScript(() => {
-    const send = WebSocket.prototype.send;
-    (window as any).subscriptions = [];
-    WebSocket.prototype.send = function (data) {
-      if (typeof data === "string") {
-        const message = JSON.parse(data);
-        if (message.type === "visualization_subscribe")
-          (window as any).subscriptions.push(message.enabled);
-      }
-      return send.call(this, data);
-    };
-  });
-  await page.goto("/");
-  await page.getByRole("tab", { name: "Visualizations", exact: true }).click();
-  await addVisualization(page, "oscilloscope");
-  await addVisualization(page, "oscilloscope");
-  await expect(page.locator(".visual-widget")).toHaveCount(2);
-  await expect
-    .poll(() => page.evaluate(() => (window as any).subscriptions.at(-1)))
-    .toBe(true);
-  await expect(page.locator(".visual-widget canvas").first()).toHaveAttribute(
-    "data-source",
-    "server",
-  );
-  await page
-    .getByRole("button", { name: "Pin below", exact: true })
-    .first()
-    .click();
-  await page.getByRole("tab", { name: "Instrument", exact: true }).click();
-  await expect(page.locator(".dock-visual canvas")).toHaveAttribute(
-    "data-source",
-    "server",
-  );
-  await page.getByRole("button", { name: "Collapse", exact: true }).click();
-  await expect
-    .poll(() => page.evaluate(() => (window as any).subscriptions.at(-1)))
-    .toBe(false);
-  await page.getByRole("button", { name: "Expand", exact: true }).click();
-  await expect
-    .poll(() => page.evaluate(() => (window as any).subscriptions.at(-1)))
-    .toBe(true);
 });
 
 test("grid dragging and corner resizing snap, persist and cancel without writes", async ({

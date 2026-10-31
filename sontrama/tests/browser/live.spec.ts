@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, setSimulation } from "./fixtures";
 
 test("live tabs, persisted controls, ordered effects and responsive geometry", async ({
   page,
@@ -109,12 +109,8 @@ test("WASM Banks produces audio from PC and pointer keys, then releases notes", 
   await page.goto("/");
   await expect(page.locator("#connection")).toHaveText("Conectado");
   await page.getByRole("tab", { name: "Salida", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Activar preview", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Preview activado", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true", { timeout: 30000 });
+  await setSimulation(page, true);
+  await page.waitForFunction(() => (window as any).sontrama.audio.ready);
   await expect(page.locator(".keyboard-head #capture-keyboard")).toHaveCount(1);
   await page
     .getByRole("button", { name: "Capturar teclado", exact: true })
@@ -173,12 +169,8 @@ test("browser preview leaves the main output unchanged and releases a disconnect
   await expect(page.locator("#connection")).toHaveText("Conectado");
   try {
     await page.getByRole("tab", { name: "Salida", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Activar preview", exact: true })
-      .click();
-    await expect(
-      page.getByRole("button", { name: "Preview activado", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true", { timeout: 30000 });
+    await setSimulation(page, true);
+    await page.waitForFunction(() => (window as any).sontrama.audio.ready);
     expect(
       (await (await page.request.get("/api/state")).json()).session.output,
     ).toBe("device");
@@ -217,12 +209,8 @@ test("browser audition falls back to the main-thread engine without AudioWorklet
   await page.goto("/");
   await expect(page.locator("#connection")).toHaveText("Conectado");
   await page.getByRole("tab", { name: "Salida", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Activar preview", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Preview activado", exact: true }),
-  ).toBeVisible({ timeout: 30000 });
+  await setSimulation(page, true);
+  await page.waitForFunction(() => (window as any).sontrama.audio.ready);
   await page
     .getByRole("button", { name: "Capturar teclado", exact: true })
     .click();
@@ -249,9 +237,8 @@ test("PC rows continue across octaves and aliases share note lifetime", async ({
   await page
     .getByRole("button", { name: "Capturar teclado", exact: true })
     .click();
-  await expect(page.locator("#browser-preview")).toHaveAttribute(
-    "aria-pressed",
-    "false",
+  expect(await page.evaluate(() => (window as any).sontrama.audio.ready)).toBe(
+    false,
   );
   await page.evaluate(async () => {
     const observer = new WebSocket(`ws://${location.host}/ws`);
@@ -325,12 +312,8 @@ test("capture and preview preferences survive reload and synchronize across brow
   await page.goto("/");
   await expect(page.locator("#connection")).toHaveText("Conectado");
   await page.getByRole("tab", { name: "Salida", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Activar preview", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Preview activado", exact: true }),
-  ).toBeVisible({ timeout: 30000 });
+  await setSimulation(page, true);
+  await page.waitForFunction(() => (window as any).sontrama.audio.ready);
   await page
     .getByRole("button", { name: "Capturar teclado", exact: true })
     .click();
@@ -339,9 +322,7 @@ test("capture and preview preferences survive reload and synchronize across brow
     page.getByRole("button", { name: "Teclado capturado", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".dock-keyboard")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Preview activado", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true", { timeout: 30000 });
+  await page.waitForFunction(() => (window as any).sontrama.audio.ready);
   await page.keyboard.down("z");
   await expect(page.locator('[data-note="60"]')).toHaveClass(/held/);
   await expect
@@ -363,23 +344,17 @@ test("capture and preview preferences survive reload and synchronize across brow
   await expect(
     other.getByRole("button", { name: "Teclado capturado", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    other.getByRole("button", { name: "Preview activado", exact: true }),
-  ).toBeVisible({ timeout: 30000 });
+  await other.waitForFunction(() => (window as any).sontrama.audio.ready);
   await page
     .getByRole("button", { name: "Teclado capturado", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Preview activado", exact: true })
-    .click();
+  await setSimulation(page, false);
   await page.reload();
   await expect(page.locator("#capture-keyboard")).toHaveAttribute(
     "aria-pressed",
     "false",
   );
-  await expect(
-    page.getByRole("button", { name: "Activar preview", exact: true }),
-  ).toHaveAttribute("aria-pressed", "false");
+  await page.waitForFunction(() => !(window as any).sontrama.audio.ready);
   expect(
     await page.evaluate(() =>
       JSON.parse(localStorage.getItem("sontrama.preferences.v1")!),
@@ -389,9 +364,7 @@ test("capture and preview preferences survive reload and synchronize across brow
     "aria-pressed",
     "false",
   );
-  await expect(
-    other.getByRole("button", { name: "Activar preview", exact: true }),
-  ).toBeVisible();
+  await other.waitForFunction(() => !(window as any).sontrama.audio.ready);
   await otherContext.close();
 });
 

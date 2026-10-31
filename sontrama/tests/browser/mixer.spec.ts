@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, setSimulation } from "./fixtures";
 
 test("channel selector edits one bus, syncs controls and processes master audio", async ({
   page,
@@ -21,12 +21,8 @@ test("channel selector edits one bus, syncs controls and processes master audio"
     await page.goto("/");
     await phone.goto("/");
     await page.getByRole("tab", { name: "Output", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Enable preview", exact: true })
-      .click();
-    await expect(
-      page.getByRole("button", { name: "Preview enabled", exact: true }),
-    ).toBeVisible();
+    await setSimulation(page, true);
+    await page.waitForFunction(() => (window as any).sontrama.audio.ready);
     for (const screen of [page, phone])
       await screen.getByRole("tab", { name: "Mixer", exact: true }).click();
     await expect(page.getByRole("tab")).toHaveCount(5);
@@ -272,9 +268,7 @@ test("stereo meters hold peaks, latch overloads and reset when switching sources
   });
   await page.goto("/");
   await page.getByRole("tab", { name: "Output", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Enable preview", exact: true })
-    .click();
+  await setSimulation(page, true);
   await page.getByRole("tab", { name: "Mixer", exact: true }).click();
   const channel = page.locator(
     '[data-summary="channel"] [data-meter-side="left"]',
@@ -328,11 +322,9 @@ test("stereo meters hold peaks, latch overloads and reset when switching sources
       .toBeLessThan(held - 5);
     await expect(channel).toHaveAttribute("data-clipping", "false");
     await page.getByRole("tab", { name: "Output", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Preview enabled", exact: true })
-      .click();
+    await setSimulation(page, false);
     await page.getByRole("tab", { name: "Mixer", exact: true }).click();
-    await expect(channel).toHaveAttribute("data-source", "server");
+    await expect(channel).toHaveAttribute("data-source", "preview");
     await expect(channel).toHaveAttribute("data-peak-db", "-60.00");
     await expect(channel).toHaveAttribute("data-clipping", "false");
   } finally {

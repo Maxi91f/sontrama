@@ -3,3 +3,4 @@ set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/../config.sh"
 cd -- "$APP_DIR"
 npm ci "$@"
+"$TASK_DIR/init/wasm.sh"

@@ -8,6 +8,7 @@ class BanksEngine implements VoiceEngine {
   private font = "";
   private preset = "";
   private closed = false;
+  private sustain: boolean | undefined;
   constructor(
     readonly node: AudioNode,
     private synth: ISynthesizer,
@@ -37,8 +38,12 @@ class BanksEngine implements VoiceEngine {
       this.panic();
       this.synth.midiProgramSelect(0, this.fontId, state.bank, state.program);
       this.preset = preset;
+      this.sustain = undefined;
     }
-    this.synth.midiControl(0, 64, state.sustain ? 127 : 0);
+    if (this.sustain !== state.sustain) {
+      this.synth.midiControl(0, 64, state.sustain ? 127 : 0);
+      this.sustain = state.sustain;
+    }
   }
   midi(data: number[]) {
     if (!this.ready) return;

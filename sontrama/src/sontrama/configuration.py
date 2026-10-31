@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import threading
@@ -127,7 +128,9 @@ class Configuration(StrictModel):
     audio: AudioSettings = Field(default_factory=AudioSettings)
     midi: MidiSettings = Field(default_factory=MidiSettings)
     library: LibrarySettings = Field(default_factory=LibrarySettings)
-    browser_preview: bool = False
+    browser_preview: bool = True
+    preview_volume: float = Field(default=1.0, ge=0, le=1)
+    preview_muted: bool = True
     visualizations: VisualizationSettings = Field(default_factory=VisualizationSettings)
 
 
@@ -211,11 +214,14 @@ class ConfigurationService:
                 paths=[str(path) for path in studio.catalog.roots if path.exists()]
             ),
         )
-        self.settings = (
-            Configuration.model_validate_json(self.path.read_text())
-            if self.path.exists()
-            else defaults
-        )
+        if self.path.exists():
+            saved = json.loads(self.path.read_text())
+            if "preview_volume" not in saved and "preview_muted" not in saved:
+                # The old toggle controlled listening, not silent local simulation.
+                saved["browser_preview"] = True
+            self.settings = Configuration.model_validate(saved)
+        else:
+            self.settings = defaults
         if self.settings.library != defaults.library:
             studio.catalog = self._catalog(self.settings.library, validate=False)
         studio.sample_rate = self.settings.audio.sample_rate

@@ -42,28 +42,8 @@ export interface VisualizationSettings {
   collapsed: boolean;
   active: string;
 }
-export interface VisualizationFrame {
-  sample_rate: number;
-  channel: number[][];
-  master: number[][];
-  pitch?: { sample_rate: number; channel: number[]; master: number[] };
-}
-interface PackedVisualizationFrame {
-  encoding: "float32-base64";
-  sample_rate: number;
-  channel: string[];
-  master: string[];
-  pitch: { sample_rate: number; channel: string; master: string };
-}
-function decodeSamples(encoded: string): number[] {
-  const bytes = Uint8Array.from(atob(encoded), (character) =>
-    character.charCodeAt(0),
-  );
-  const view = new DataView(bytes.buffer);
-  return Array.from({ length: bytes.length / 4 }, (_, index) =>
-    view.getFloat32(index * 4, true),
-  );
-}
+export type SimulationState =
+  "off" | "loading" | "suspended" | "unavailable" | "ready";
 const title = (widget: VisualizationWidget) => t(`visuals.${widget.kind}`);
 const busName = (bus: string) =>
   bus === "master" ? "Master" : t("mixer.channel");
@@ -99,11 +79,6 @@ export class VisualizationsView {
     active: "keyboard",
   };
   private signature = "";
-  private visible = false;
-  private subscribed = false;
-  private subscribedWindow = 1024;
-  private serverFrame: VisualizationFrame | null = null;
-  private received = -Infinity;
   private frozen = new Map<string, Signal>();
   private lastDraw = -Infinity;
   private feedback = "";
@@ -130,7 +105,8 @@ export class VisualizationsView {
       sampleRate: number;
       pitchAnalysers?: AnalyserNode[];
     } | null,
-    private subscribe: (enabled: boolean, windowSize?: number) => void,
+    private simulationState: () => SimulationState,
+    private enableSimulation: () => Promise<void>,
     private releaseKeys: () => void,
   ) {
     this.dockResize = new DockResizeInteractions(dock, (id, width) =>
@@ -192,6 +168,13 @@ export class VisualizationsView {
         );
         if (!button) return;
         const { visualAction: action, id } = button.dataset;
+        if (action === "enable-simulation") {
+          void this.enableSimulation().catch((error) => {
+            this.feedback = errorText(error);
+            this.render();
+          });
+          return;
+        }
         if (action === "picker") {
           this.showPicker();
           return;
@@ -282,9 +265,6 @@ export class VisualizationsView {
         `${dock.getBoundingClientRect().height}px`,
       );
     }).observe(dock);
-    document.addEventListener("visibilitychange", () =>
-      this.syncSubscription(),
-    );
   }
 
   private mutate(edit: (next: VisualizationSettings) => void) {
@@ -372,81 +352,18 @@ export class VisualizationsView {
     this.renderers.retain(identifiers);
     for (const id of this.midiSince.keys())
       if (!identifiers.has(id)) this.midiSince.delete(id);
-    this.syncSubscription();
   }
 
   setVisible(visible: boolean) {
     if (!visible) this.grid.cancel();
-    this.visible = visible;
-    this.syncSubscription();
   }
-  reconnect() {
-    this.subscribed = false;
-    this.syncSubscription();
-  }
-  receive(frame: VisualizationFrame | PackedVisualizationFrame) {
-    this.serverFrame =
-      "encoding" in frame
-        ? {
-            sample_rate: frame.sample_rate,
-            channel: frame.channel.map(decodeSamples),
-            master: frame.master.map(decodeSamples),
-            pitch: {
-              sample_rate: frame.pitch.sample_rate,
-              channel: decodeSamples(frame.pitch.channel),
-              master: decodeSamples(frame.pitch.master),
-            },
-          }
-        : frame;
-    this.received = performance.now();
-  }
-
-  private syncSubscription() {
-    const enabled =
-      !document.hidden &&
-      !this.preview() &&
-      this.settings.widgets.some(
-        (widget) =>
-          !widget.paused &&
-          widget.kind !== "midi" &&
-          (this.visible ||
-            (!this.settings.collapsed &&
-              widget.pinned &&
-              (!matchMedia("(max-width: 800px)").matches ||
-                this.settings.active === widget.id))),
-      );
-    const windowSize = Math.max(
-      1024,
-      ...this.settings.widgets
-        .filter(
-          (widget) =>
-            ["spectrum", "spectrogram"].includes(widget.kind) &&
-            !widget.paused &&
-            (this.visible || (!this.settings.collapsed && widget.pinned)),
-        )
-        .map((widget) => widget.spectral.fft_size),
-    );
-    if (
-      enabled !== this.subscribed ||
-      (enabled && windowSize !== this.subscribedWindow)
-    ) {
-      this.subscribed = enabled;
-      this.subscribedWindow = windowSize;
-      this.subscribe(enabled, windowSize);
-    }
-  }
-
   midi(data: number[]) {
     this.monitor.receive(data);
   }
   silenceMidi() {
     this.monitor.silence();
   }
-  receiveLevels(
-    source: "server" | "preview",
-    channel: number[],
-    master: number[],
-  ) {
+  receiveLevels(source: "preview", channel: number[], master: number[]) {
     this.levels.set(source, { time: performance.now(), channel, master });
   }
   private showPicker() {
@@ -503,7 +420,7 @@ export class VisualizationsView {
     const stereo = ["oscilloscope", "spectrum", "vectorscope"].includes(
       widget.kind,
     );
-    return `<canvas data-visual-canvas="${widget.id}" role="img" aria-label="${label}"></canvas><div class="visual-legend">${stereo ? '<span class="signal-left">L</span><span class="signal-right">R</span>' : ""}<span data-visual-summary></span><span data-visual-source>${t("visuals.waiting")}</span></div>`;
+    return `<div class="visual-surface"><canvas data-visual-canvas="${widget.id}" role="img" aria-label="${label}"></canvas><div class="visual-simulation" hidden><p data-simulation-message></p><button type="button" data-visual-action="enable-simulation"></button></div></div><div class="visual-legend">${stereo ? '<span class="signal-left">L</span><span class="signal-right">R</span>' : ""}<span data-visual-summary></span><span data-visual-status></span></div>`;
   }
 
   private render() {
@@ -655,7 +572,6 @@ export class VisualizationsView {
     if (now - this.lastDraw < 50 || document.hidden) return;
     this.lastDraw = now;
     this.layoutDock();
-    this.syncSubscription();
     const preview = this.preview();
     const signals = new Map<string, Signal>();
 
@@ -664,8 +580,36 @@ export class VisualizationsView {
         ...document.querySelectorAll<HTMLCanvasElement>(
           `canvas[data-visual-canvas="${widget.id}"]`,
         ),
-      ].filter((canvas) => canvas.checkVisibility());
+      ].filter((canvas) => canvas.parentElement!.checkVisibility());
       if (!canvases.length) continue;
+      const status = this.simulationState();
+      const inactive = widget.kind !== "midi" && status !== "ready";
+      for (const canvas of canvases) {
+        const surface = canvas.parentElement!;
+        if (surface.dataset.inactive !== String(inactive)) {
+          this.frozen.delete(widget.id);
+          this.renderers.reset(widget.id);
+        }
+        surface.dataset.inactive = String(inactive);
+        const overlay =
+          surface.querySelector<HTMLElement>(".visual-simulation")!;
+        overlay.hidden = !inactive;
+        surface.querySelector("[data-simulation-message]")!.textContent = t(
+          `visuals.simulation.${status}`,
+        );
+        const button = surface.querySelector<HTMLButtonElement>(
+          "[data-visual-action=enable-simulation]",
+        )!;
+        button.disabled = status === "loading";
+        button.textContent = t(
+          status === "off"
+            ? "visuals.enableSimulation"
+            : status === "suspended"
+              ? "visuals.resumeSimulation"
+              : "visuals.retrySimulation",
+        );
+      }
+      if (inactive) continue;
       let signal = widget.paused ? this.frozen.get(widget.id) : undefined;
       if (!signal) {
         signal = signals.get(widget.bus);
@@ -680,10 +624,6 @@ export class VisualizationsView {
               .forEach((analyser, index) =>
                 analyser.getFloatTimeDomainData(samples[index]),
               );
-          else if (this.serverFrame && now - this.received < 400)
-            samples.forEach((buffer, index) =>
-              buffer.set(this.serverFrame![widget.bus][index].slice(-1024)),
-            );
           const needsPitch = this.settings.widgets.some(
             (candidate) =>
               candidate.kind === "tuner" &&
@@ -713,24 +653,8 @@ export class VisualizationsView {
               pitchRate = preview.sampleRate / 4;
             }
             if (needsLong) analysisSamples = windows;
-          } else if (
-            needsPitch &&
-            this.serverFrame?.pitch &&
-            now - this.received < 400
-          ) {
-            pitch = Float32Array.from(this.serverFrame.pitch[widget.bus]);
-            pitchRate = this.serverFrame.pitch.sample_rate;
           }
-          if (
-            !preview &&
-            needsLong &&
-            this.serverFrame &&
-            now - this.received < 400
-          )
-            analysisSamples = this.serverFrame[widget.bus].map((values) =>
-              Float32Array.from(values),
-            );
-          const source = preview ? "preview" : "server";
+          const source = "preview";
           const levels = this.levels.get(source);
           signal = {
             samples,
@@ -741,19 +665,18 @@ export class VisualizationsView {
               levels && now - levels.time < 160
                 ? levels[widget.bus]
                 : undefined,
-            sampleRate:
-              preview?.sampleRate ?? this.serverFrame?.sample_rate ?? 44100,
-            source: preview ? "preview" : "server",
+            sampleRate: preview?.sampleRate ?? 44100,
+            source: "preview",
           };
           signals.set(widget.bus, signal);
         }
       }
       this.frozen.set(widget.id, signal);
       for (const canvas of canvases) {
-        const label = canvas.parentElement!.querySelector(
-          "[data-visual-source]",
+        const label = canvas.parentElement!.parentElement!.querySelector(
+          "[data-visual-status]",
         )!;
-        label.textContent = `${t(widget.kind === "midi" ? "visuals.midiSource" : `visuals.${signal.source}`)}${widget.paused ? ` · ${t("visuals.paused")}` : ""}`;
+        label.textContent = widget.paused ? t("visuals.paused") : "";
         this.renderers.render(
           canvas,
           widget,

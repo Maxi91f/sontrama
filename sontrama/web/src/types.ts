@@ -66,6 +66,7 @@ export interface Bank {
 }
 export interface Snapshot {
   type: "state";
+  connection_id?: string;
   session: Session;
   catalog: Bank[];
   status: {
@@ -76,6 +77,7 @@ export interface Snapshot {
     issues?: ApiIssue[];
     underruns: number;
     catalog_revision?: number;
+    engine_contract?: import("./audio").EngineContract;
   };
 }
 export const effectInfo = Object.fromEntries(

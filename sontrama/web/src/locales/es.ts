@@ -1,4 +1,11 @@
 export default {
+  "errors.previewCoreLoad":
+    "No se pudo cargar el motor de audio compartido. Reconstruí la aplicación y actualizá la página.",
+  "errors.previewCoreMismatch":
+    "Los motores de audio del servidor y del navegador son distintos. Actualizá la página después de reconstruir.",
+  "errors.previewBanksMismatch":
+    "El preview de Banks necesita FluidSynth {{expected}} en el servidor (se encontró {{actual}}). Ejecutá la instalación de audio fijada.",
+
   "visuals.analysisSettings": "Ajustes de análisis",
   "visuals.fftSize": "Tamaño de FFT",
   "visuals.window": "Función de ventana",
@@ -56,7 +63,6 @@ export default {
   "visuals.pitchBend": "Pitch bend",
   "visuals.pressure": "Presión",
   "visuals.program": "Programa",
-  "visuals.midiSource": "MIDI recibido",
   "visuals.heldNotes": "Teclas presionadas",
   "visuals.waitingMidi": "Esperando MIDI",
   "visuals.events": "eventos",
@@ -104,8 +110,21 @@ export default {
   "visuals.collapse": "Plegar",
   "visuals.expand": "Desplegar",
   "visuals.show": "Mostrar",
-  "visuals.preview": "Preview del navegador",
-  "visuals.server": "Audio del servidor",
+  "visuals.simulation.off":
+    "Activá la simulación local para ver esta visualización.",
+  "visuals.simulation.loading": "Cargando simulación local…",
+  "visuals.simulation.suspended":
+    "Reanudá la simulación local para ver esta visualización.",
+  "visuals.simulation.unavailable":
+    "No se pudo iniciar la simulación local. Intentá de nuevo.",
+  "visuals.simulation.ready": "",
+  "visuals.enableSimulation": "Activar simulación local",
+  "visuals.resumeSimulation": "Reanudar simulación",
+  "visuals.retrySimulation": "Reintentar simulación",
+  "settings.simulation": "Simulación local",
+  "settings.simulationHint":
+    "Ejecuta el instrumento y los efectos en este navegador para las visualizaciones y el audio de preview.",
+  "output.previewVolume": "Volumen del preview",
   "visuals.waiting": "Esperando señal",
 
   "mixer.meterReading": "Nivel {{level}} dBFS · Pico {{peak}} dBFS",
@@ -319,10 +338,6 @@ export default {
   "output.preview": "Preview en navegador",
   "output.previewHint":
     "Escuchá una copia del audio acá, sin cambiar la salida principal.",
-  "output.activate": "Activar preview",
-  "output.loading": "Cargando preview…",
-  "output.resume": "Reactivar preview",
-  "output.enabled": "Preview activado",
   "settings.interface": "Interfaz",
   "settings.keyboard": "Teclado",
   "settings.audio": "Audio",

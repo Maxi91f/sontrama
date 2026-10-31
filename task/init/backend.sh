@@ -3,3 +3,4 @@ set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/../config.sh"
 cd -- "$APP_DIR"
 uv sync --frozen --python "$PYTHON_VERSION" "$@"
+./scripts/build-banks.sh

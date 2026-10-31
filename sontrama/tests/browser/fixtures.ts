@@ -55,6 +55,8 @@ export const test = base.extend<{ sharedConfiguration: void }>({
             labels: "shortcuts",
           },
           browser_preview: false,
+          preview_volume: 1,
+          preview_muted: false,
           visualizations: {
             widgets: [],
             dock_order: ["keyboard"],
@@ -84,3 +86,18 @@ export const test = base.extend<{ sharedConfiguration: void }>({
   ],
 });
 export { expect };
+
+export async function setSimulation(
+  page: import("@playwright/test").Page,
+  enabled = true,
+) {
+  await page.evaluate(async (browser_preview) => {
+    const response = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ browser_preview }),
+    });
+    if (!response.ok) throw new Error("Could not update local simulation");
+  }, enabled);
+  await page.mouse.click(1, 1);
+}

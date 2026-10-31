@@ -229,9 +229,9 @@ export class VisualRenderers {
       canvas.dataset.fftSize = String(fftSize);
       canvas.dataset.sampleRate = String(signal.sampleRate);
       canvas.dataset.historySeconds = String(config.history_seconds);
-      const info = canvas.parentElement!.querySelector<HTMLElement>(
-        "[data-analysis-info]",
-      );
+      const info = canvas
+        .closest(".visual-widget, .dock-panel")!
+        .querySelector<HTMLElement>("[data-analysis-info]");
       if (info)
         info.textContent = t("visuals.analysisInfo", {
           rate: number(signal.sampleRate, 0),
@@ -646,9 +646,9 @@ export class VisualRenderers {
       "aria-label",
       `${t(`visuals.${widget.kind}`)}${summary ? ` · ${summary}` : ""}`,
     );
-    const summaryElement = canvas.parentElement!.querySelector<HTMLElement>(
-      "[data-visual-summary]",
-    );
+    const summaryElement = canvas
+      .closest(".visual-widget, .dock-panel")!
+      .querySelector<HTMLElement>("[data-visual-summary]");
     if (summaryElement)
       summaryElement.textContent = ["vu", "midi"].includes(widget.kind)
         ? summary

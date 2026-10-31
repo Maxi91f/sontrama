@@ -183,28 +183,3 @@ def test_legacy_inverter_settings_load_as_phase_slider(tmp_path):
     loaded = StateStore(path).load()
     assert loaded.three_osc.oscillators[0].phase_start == 180
     assert "invert" not in loaded.three_osc.oscillators[0].model_dump()
-
-
-@pytest.mark.parametrize("am", [False, True])
-def test_native_kernel_matches_reference_audio(am):
-    patch = ThreeOscPatch(am_osc3=am)
-    for oscillator, shape in zip(patch.oscillators, ["saw", "triangle", "square"], strict=True):
-        oscillator.shape = shape
-    patch.oscillators[0].phase_start = 40
-    patch.oscillators[0].detune = 11
-    patch.oscillators[1].phase = 90
-    patch.oscillators[1].mix = 0.4
-    patch.oscillators[2].mix = 0.2
-    native = ThreeOscInstrument(44100, patch)
-    if native.kernel is None:
-        pytest.skip("Native DSP needs a C compiler")
-    reference = ThreeOscInstrument(44100, patch)
-    reference.kernel = None
-    for synth in (native, reference):
-        for note in (48, 60, 67):
-            synth.midi([144, note, 90])
-        synth.midi([176, 1, 80])
-    for _ in range(20):
-        actual = native.render(256)
-        expected = reference.render(256)
-        assert np.allclose(actual, expected, atol=0.002, rtol=0)

@@ -1,28 +1,36 @@
-import workletUrl from "./three-osc.worklet.ts?worker&url";
-import { ThreeOscDSP } from "./three-osc-dsp";
+import { WasmCore, WasmOscillator } from "./dsp-core";
+import { prepareEffects } from "./effects";
 import type { Session } from "./types";
 import type { VoiceEngine } from "./voice-engine";
 export async function createThreeOscEngine(
   context: AudioContext,
   state: Session,
 ): Promise<VoiceEngine> {
+  const prepared = await prepareEffects(context);
+  let sustain: boolean | undefined;
   if (context.audioWorklet) {
-    await context.audioWorklet.addModule(workletUrl);
     const node = new AudioWorkletNode(context, "sontrama-three-osc", {
       numberOfInputs: 0,
       numberOfOutputs: 1,
       outputChannelCount: [2],
-      processorOptions: { patch: state.three_osc },
+      processorOptions: {
+        module: prepared.module,
+        tables: prepared.tables,
+        patch: state.three_osc,
+      },
     });
     return {
       node,
       ready: true,
       async configure(next) {
         node.port.postMessage({ type: "configure", patch: next.three_osc });
-        node.port.postMessage({
-          type: "midi",
-          data: [0xb0, 64, next.sustain ? 127 : 0],
-        });
+        if (sustain !== next.sustain) {
+          node.port.postMessage({
+            type: "midi",
+            data: [0xb0, 64, next.sustain ? 127 : 0],
+          });
+          sustain = next.sustain;
+        }
       },
       midi(data) {
         node.port.postMessage({ type: "midi", data });
@@ -37,7 +45,11 @@ export async function createThreeOscEngine(
       },
     };
   }
-  const dsp = new ThreeOscDSP(context.sampleRate, state.three_osc);
+  const dsp = new WasmOscillator(
+    new WasmCore(prepared.module, prepared.tables),
+    context.sampleRate,
+    state.three_osc,
+  );
   const node = context.createScriptProcessor(1024, 0, 2);
   node.onaudioprocess = (event) =>
     dsp.process(
@@ -49,7 +61,10 @@ export async function createThreeOscEngine(
     ready: true,
     async configure(next) {
       dsp.configure(next.three_osc);
-      dsp.midi([0xb0, 64, next.sustain ? 127 : 0]);
+      if (sustain !== next.sustain) {
+        dsp.midi([0xb0, 64, next.sustain ? 127 : 0]);
+        sustain = next.sustain;
+      }
     },
     midi(data) {
       dsp.midi(data);
@@ -58,7 +73,7 @@ export async function createThreeOscEngine(
       dsp.panic();
     },
     close() {
-      dsp.panic();
+      dsp.close();
       node.onaudioprocess = null;
       node.disconnect();
     },

@@ -27,7 +27,7 @@ for (const frequency of [55, 82.4069, 110, 261.6256, 440, 880, 1760])
     const pitch = signalPitch({
       samples: [raw, raw],
       sampleRate: rate,
-      source: "server",
+      source: "preview",
       pitch: pitchWindow([full, full]),
       pitchRate: rate / 4,
     });

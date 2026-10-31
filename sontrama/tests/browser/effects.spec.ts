@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, setSimulation } from "./fixtures";
 
 for (const fallback of [false, true]) {
   test(`expanded effects persist, sync and process audio (${fallback ? "fallback" : "worklet"})`, async ({
@@ -25,12 +25,8 @@ for (const fallback of [false, true]) {
       await page.goto("/");
       await observer.goto("/");
       await page.getByRole("tab", { name: "Output", exact: true }).click();
-      await page
-        .getByRole("button", { name: "Enable preview", exact: true })
-        .click();
-      await expect(
-        page.getByRole("button", { name: "Preview enabled", exact: true }),
-      ).toBeVisible();
+      await setSimulation(page, true);
+      await page.waitForFunction(() => (window as any).sontrama.audio.ready);
       await page.getByRole("tab", { name: "Mixer", exact: true }).click();
       await observer.getByRole("tab", { name: "Mixer", exact: true }).click();
       const add = async (name: string) => {

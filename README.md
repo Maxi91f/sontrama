@@ -31,6 +31,7 @@
 
 Bring in MIDI, choose an instrument, shape its sound and send it out.
 Each part has its own job; instruments and effects plug into shared contracts.
+The same audio processing runs on the Pi and in browser preview.
 
 - **Interchangeable instruments:** choose a sound engine while keeping the same MIDI controls and signal path.
 - **Build an effect chain:** add, bypass and reorder effects; balance the sound with channel and master controls.
@@ -86,13 +87,19 @@ After installing the [system dependencies](sontrama/README.md#running-locally):
 
 ```sh
 cd sontrama
-uv sync --frozen && npm ci && npm run build
+uv sync --frozen && npm ci
+./scripts/build-banks.sh
+../task/init/wasm.sh
+npm run build
 uv run --frozen sontrama
 ```
 
-Open **http://localhost:8081**. Enable **Browser preview** in **Output** to listen in your browser.
+Open **http://localhost:8081**. Local simulation starts enabled and muted.
+In **Output**, unmute **Browser preview** to listen and adjust its volume.
 
 Each browser generates its own preview audio, independently of the server output.
-The preview switch is shared across connected screens.
+It uses the same DSP code and requested sample rate; browser-origin notes play
+locally without waiting for the server echo. Simulation, preview volume and mute are shared across
+connected screens. Muting preview keeps visualizations running. Shared processing does not synchronize device output clocks.
 
 [Setup & instruments](sontrama/README.md) · [Development & deployment](docs/DEVELOPMENT.md) · [MIT License](LICENSE)

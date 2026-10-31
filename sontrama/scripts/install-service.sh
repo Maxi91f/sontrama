@@ -11,6 +11,7 @@ if [[ ! -x .venv/bin/sontrama || ! -f dist/index.html ]]; then
   echo 'First run: uv sync --frozen --no-dev && npm ci && npm run build' >&2
   exit 1
 fi
+./scripts/build-banks.sh
 mkdir -p data/soundfonts
 # Service paths are read-only: prepare bytecode and the native kernel beforehand.
 uv run --frozen --no-sync python -m compileall -q src .venv/lib

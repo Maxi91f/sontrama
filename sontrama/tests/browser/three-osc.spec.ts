@@ -29,12 +29,8 @@ for (const fallback of [false, true]) {
           fonts.push(request.url());
       });
       await page.getByRole("tab", { name: "Salida", exact: true }).click();
-      await page
-        .getByRole("button", { name: "Activar preview", exact: true })
-        .click();
-      await expect(
-        page.getByRole("button", { name: "Preview activado", exact: true }),
-      ).toBeVisible({ timeout: 30000 });
+      await setSimulation(page, true);
+      await page.waitForFunction(() => (window as any).sontrama.audio.ready);
       expect(fonts).toEqual([]);
       await page
         .getByRole("button", { name: "Capturar teclado", exact: true })

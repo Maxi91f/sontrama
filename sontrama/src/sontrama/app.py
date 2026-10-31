@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
@@ -52,21 +53,11 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
         )
     configuration = ConfigurationService(studio)
     clients: dict[WebSocket, asyncio.Queue] = {}
-    visualization_clients: dict[WebSocket, int] = {}
 
     async def meters():
         while True:
             await asyncio.sleep(0.08)
             broadcast({"type": "meters", **studio.read_meters()})
-            if visualization_clients:
-                event = await asyncio.to_thread(
-                    studio.read_visualization, max(visualization_clients.values()), packed=True
-                )
-                for socket in list(visualization_clients):
-                    queue = clients.get(socket)
-                    # Visualization frames are disposable; never displace MIDI events.
-                    if queue is not None and queue.qsize() < 4:
-                        queue.put_nowait(event)
 
     def broadcast(event: dict):
         for queue in list(clients.values()):
@@ -178,7 +169,7 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
         queue: asyncio.Queue = asyncio.Queue(maxsize=256)
         source = "web:" + uuid4().hex
         clients[socket] = queue
-        await socket.send_json(studio.snapshot())
+        await socket.send_json({**studio.snapshot(), "connection_id": source})
         await socket.send_json(configuration.snapshot())
 
         async def sender():
@@ -186,6 +177,7 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
                 await socket.send_json(await queue.get())
 
         task = asyncio.create_task(sender())
+        acknowledged = OrderedDict()
         try:
             while True:
                 message = await socket.receive_json()
@@ -198,7 +190,30 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
                         ):
                             raise ValueError("Invalid MIDI controller name")
                         routed_source = source + ":midi:" + controller if controller else source
-                        studio.midi(event.data, routed_source, controller=controller)
+                        event_id = message.get("event_id")
+                        if event_id is not None and (
+                            not isinstance(event_id, str) or not 1 <= len(event_id) <= 100
+                        ):
+                            raise ValueError("Invalid MIDI event identifier")
+                        if event_id is not None and event_id in acknowledged:
+                            queue.put_nowait(acknowledged[event_id])
+                            continue
+                        routed = studio.midi(
+                            event.data, routed_source, controller=controller, event_id=event_id
+                        )
+                        if event_id is not None:
+                            # Native MIDI events are enqueued by call_soon_threadsafe; keep
+                            # their echoes ahead of the acknowledgement on this connection.
+                            await asyncio.sleep(0)
+                            acknowledgement = {
+                                "type": "midi_ack",
+                                "event_id": event_id,
+                                "routed": routed,
+                            }
+                            acknowledged[event_id] = acknowledgement
+                            if len(acknowledged) > 512:
+                                acknowledged.popitem(last=False)
+                            queue.put_nowait(acknowledgement)
                     elif message.get("type") == "midi_devices":
                         names = message.get("names")
                         if not isinstance(names, list):
@@ -208,20 +223,6 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
                         for name in set(previous_names) - set(names):
                             studio.release_source(source + ":midi:" + name)
                         broadcast(configuration.snapshot())
-                    elif message.get("type") == "visualization_subscribe":
-                        enabled = message.get("enabled")
-                        if not isinstance(enabled, bool):
-                            raise ValueError("Visualization subscription must be a boolean")
-                        window_size = message.get("window_size", 1024)
-                        if type(window_size) is not int or window_size not in (1024, 2048, 4096):
-                            raise ValueError(
-                                "Visualization window must be 1024, 2048 or 4096 samples"
-                            )
-                        if enabled:
-                            visualization_clients[socket] = window_size
-                        else:
-                            visualization_clients.pop(socket, None)
-                        studio.enable_visualization(bool(visualization_clients))
                     elif message.get("type") == "release":
                         studio.release_source(source)
                     elif message.get("type") == "panic":
@@ -230,14 +231,18 @@ def create_app(studio: Studio | None = None, *, audio=True, midi=True):
                         raise ValueError("Unknown message")
                 except (ValidationError, ValueError, AttributeError) as error:
                     queue.put_nowait(
-                        {"type": "error", **error_detail(error, "invalid_midi_message")}
+                        {
+                            "type": "error",
+                            "event_id": message.get("event_id")
+                            if isinstance(message, dict)
+                            else None,
+                            **error_detail(error, "invalid_midi_message"),
+                        }
                     )
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
             clients.pop(socket, None)
-            visualization_clients.pop(socket, None)
-            studio.enable_visualization(bool(visualization_clients))
             configuration.browser_devices.pop(source, None)
             broadcast(configuration.snapshot())
             studio.release_source(source)

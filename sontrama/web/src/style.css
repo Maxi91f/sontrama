@@ -1429,10 +1429,10 @@ body {
   min-height: 36px;
   padding: 6px 10px;
 }
-.visual-widget > :not(canvas) {
+.visual-widget > :not(.visual-surface) {
   flex-shrink: 0;
 }
-.visual-widget canvas {
+.visual-widget .visual-surface {
   flex: 1 0 var(--visual-height);
   min-height: var(--visual-height);
   height: var(--visual-height);
@@ -1451,7 +1451,7 @@ body {
   font: 10px monospace;
   margin-top: 8px;
 }
-.visual-legend [data-visual-source] {
+.visual-legend [data-visual-status] {
   margin-left: auto;
 }
 .signal-left {
@@ -2090,4 +2090,48 @@ body.grid-interacting {
 
 .dock-visual canvas {
   height: 120px;
+}
+
+.visual-surface {
+  position: relative;
+  min-width: 0;
+}
+.visual-widget .visual-surface canvas {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
+.visual-surface[data-inactive="true"] canvas {
+  visibility: hidden;
+}
+.visual-simulation {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 2px solid var(--ink);
+  padding: 12px;
+  text-align: center;
+  background: var(--surface);
+}
+.visual-simulation[hidden] {
+  display: none;
+}
+.visual-simulation p {
+  margin: 0;
+}
+.visual-simulation button {
+  background: var(--primary);
+}
+.dock-visual .visual-simulation {
+  gap: 6px;
+  font-size: 12px;
+  padding: 6px;
+}
+.dock-visual .visual-simulation button {
+  min-height: 32px;
+  padding: 4px 8px;
 }

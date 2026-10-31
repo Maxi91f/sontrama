@@ -6,19 +6,26 @@ Code and documentation use English; the UI supports Spanish and English.
 ## Running locally
 
 Requires Python 3.12, uv, Node 22.13+ (22.x) or 24+, and Linux audio libraries.
-On Debian/Raspberry Pi OS:
+From `sontrama/`, on Debian/Raspberry Pi OS:
 
 ```sh
-sudo apt install libfluidsynth3 timgm6mb-soundfont libportaudio2 libasound2-dev build-essential pkg-config
+sudo apt install timgm6mb-soundfont libportaudio2 libasound2-dev build-essential cmake pkg-config libglib2.0-dev git
 uv sync --frozen
 npm ci
+./scripts/build-banks.sh
+../task/init/wasm.sh
 npm run build
 uv run --frozen sontrama
 ```
 
+Node and Emscripten are build dependencies;
+they are not required on a Pi receiving a frontend built on the PC.
+
 Open <http://127.0.0.1:8081>. No Internet connection is required after installation
 and building. FluidSynth WASM assets are served locally.
-To listen on this computer, open **Output** and enable **Browser preview**.
+Local simulation is enabled by default, with preview volume at 100% and mute on.
+To listen on this computer, open **Output** and unmute **Browser preview**.
+Preview volume and mute affect only browser listening; visualizers keep running.
 This is an additional monitor and does not change the server's main output.
 The fixed **Monitor bar** contains the test keyboard. **Capture keyboard**
 toggles PC keyboard capture only.
@@ -67,26 +74,34 @@ Workspace-level setup, development and deployment scripts are documented in
   settings. The bar stays available across tabs and settings; on mobile, its
   selector switches between the keyboard and pinned views. Dashboard layout,
   pins and bar preferences are shared across browsers and survive restart.
-- **Output**: the server's main output and browser audio preview.
-  The server keeps playing when the page closes. Preview and keyboard capture
-  preferences are shared across connected browsers. If autoplay is blocked, audio
+- **Output**: server audio status, stereo output meters and underruns, plus
+  independent browser preview volume and mute. The server keeps playing when
+  the page closes. Local simulation is controlled under **Settings → Audio**;
+  simulation, preview volume/mute and keyboard capture are shared across browsers. If autoplay is blocked, audio
   resumes on the next local interaction.
 
 Preview reproduces the same MIDI, instrument, parameters, effects and levels
 in the browser; Banks uses the same SoundFont. Audio is generated independently
-in each browser, while enabling or disabling preview is shared across clients
+in each browser, while enabling or disabling local simulation is shared across clients
 connected to the same server. Preview does not reroute the server output.
 Web MIDI requires HTTPS or localhost and a compatible browser; USB MIDI on the
 Pi does not depend on Web MIDI. Over LAN HTTP, browser audio falls back to the
 main thread when AudioWorklet is unavailable; HTTPS enables AudioWorklet.
+Browser-origin notes play immediately in the preview, without waiting for the
+server echo. Event IDs and acknowledgements prevent duplicate playback and
+reconcile rejected or differently routed notes. MIDI from the Pi still travels
+to the browser over WebSocket. Events received during engine loading are bounded
+and queued until initialization completes. Preview requests the server's sample
+rate and uses the same processing code, but each device has its own audio buffers
+and clock. Enabling preview or reconnecting does not reconstruct already-held
+notes, controller state or existing effect tails.
 
 Meters show stereo sample peaks after each bus's effects, pan and level controls.
 They use a −60 to 0 dBFS scale: green below −12 dBFS, yellow up to −3 dBFS,
 and red above it. The peak marker holds for 900 ms before falling; reaching
-full scale lights the overload indicator for two seconds. Server readings
-preserve the highest peak between broadcasts. With preview running, meters
-show the browser signal; otherwise they show the server signal. Switching
-sources clears held peaks. These are sample-peak meters, not true-peak or
+full scale lights the overload indicator for two seconds. Mixer meters use local simulation, independently of preview volume and mute.
+The server output meters in **Output** preserve the highest peak between
+broadcasts. Turning off simulation clears the mixer meters. These are sample-peak meters, not true-peak or
 loudness meters.
 
 Drag the grip beside a view's title to reorder it; drag its lower-right corner
@@ -123,22 +138,20 @@ scroll speed is expressed as the time across the full width (2–32 seconds).
 The source-rate readout shows the actual sampling rate and FFT resolution in Hz
 per bin. It is not a per-view audio-rate switch: native output rate is configured
 in Audio settings, while preview uses its browser AudioContext rate. Larger FFTs
-use real contiguous samples, including when viewing server audio.
+use real contiguous samples from the local engine.
 
 All views can be paused and pinned; their shared configuration persists. Audio
-views inspect Channel 01 or Master using the same source as the mixer meters.
+views inspect Channel 01 or Master from local simulation, before preview volume
+and mute. When simulation is off, each audio view offers a button to enable it;
+MIDI monitoring remains available. Suspended browser audio offers a resume action.
 The MIDI monitor follows received WebSocket MIDI independently of audio preview,
 and does not request audio frames by itself. Clearing it only clears that widget's
 local history. Histories and frozen samples are transient browser state.
 
-The server captures bounded post-level/pan sample windows only while subscribed.
-It sends 1,024 stereo samples by default, negotiating up to 4,096 when visible
-spectral views request higher resolution, plus a decimated mono window for bass
-pitch analysis. Sample windows travel as little-endian float32 blocks encoded in
-base64, avoiding per-sample JSON float formatting on the Pi. The strongest channel is used for tuning, avoiding cancellation
-between opposite-polarity channels. Preview supplies equivalent local windows.
-FFT, pitch detection, rendering and network serialization stay outside the audio
-callback. The tuner is intended for one sustained note at a time.
+The server sends MIDI, shared settings and compact peak-meter readings; it does
+not capture or stream audio samples to the browser. FFT, pitch detection and
+visual rendering run locally. The tuner uses the stronger channel to avoid
+opposite-polarity cancellation and is intended for one sustained note at a time.
 
 ## Effects
 
@@ -154,7 +167,7 @@ Every channel and Master can host any of these effects, in any order:
 | Limiter     | Peak ceiling, input gain, release and 0–10 ms lookahead                                                                   |
 
 Frequency and timing controls use logarithmic sliders where appropriate.
-Dry/Wet is 0% original signal and 100% processed signal. Click or tap a
+At 0%, Dry/Wet outputs the original signal; at 100%, it outputs the processed signal. Click or tap a
 parameter name for an explanation; controls also expose the help to screen readers.
 EQ gain appears for bell and shelf types. Parameter edits preserve DSP state,
 including reverb/delay tails; bypassing, reordering or replacing the chain resets
@@ -194,11 +207,26 @@ CC10 and CC11 control volume, pan and expression. Parameters are saved on the
 server and can be edited while notes are held. Switching to Banks preserves
 both instruments' settings.
 
-The server uses a compiled C kernel cached in `data/native`, with a NumPy
-fallback (`SONTRAMA_PYTHON_DSP=1`). Preview uses its own DSP in an AudioWorklet,
-with a ScriptProcessor fallback for HTTP without a secure context.
-The C kernel accelerates oscillators and modulation for live audio on the Pi 3 B.
-The installer prepares the kernel and bytecode before enabling systemd.
+The complete 3 Osc engine is portable C, including voice allocation, envelopes,
+controller handling, wavetable generation and per-voice random generators.
+`native_core.py` loads its native build; the browser executes the same sources
+as WebAssembly. The mixer and all six effects use this shared core too.
+There is no separate Python or TypeScript synthesis implementation.
+
+## Shared audio core
+
+The pinned Emscripten SDK is installed in `.cache/emsdk` by `../task/init/wasm.sh`.
+`npm run build` rebuilds changed DSP sources and writes the WASM binary and
+revision manifest into ignored `public/vendor/`. Native kernels are cached in
+`data/native`. Both artifacts embed their source revision; preview rejects a
+mismatched binary/manifest or server revision instead of silently diverging.
+The browser requests the server's sample rate and rebuilds when it changes.
+
+Banks uses FluidSynth 2.4.6 in both targets. `scripts/build-banks.sh` builds the
+pinned native revision locally, without replacing the system library; the
+frontend vendors the matching WASM release from the locked dependency. Startup
+and preview compatibility checks reject unexpected versions. Installation needs
+Internet access to obtain pinned build tools/sources; runtime does not.
 
 ## SoundFonts and state
 
@@ -215,9 +243,10 @@ Shared configuration is saved separately in `data/settings.json` (next to the
 configured session file). Updates are broadcast over WebSocket, so changes on
 the computer appear on a phone connected to the same server without reloading.
 Only the selected Live tab remains local under `sontrama.preferences.v1`.
-Legacy capture/preview preferences migrate once, only if the server has no
+Legacy keyboard capture preferences migrate once, only if the server has no
 saved configuration; later connections cannot overwrite shared settings with
-old browser values.
+old browser values. Older preview on/off settings migrate to enabled simulation
+with volume at 100% and mute on; subsequent simulation choices are preserved.
 Active notes are not persisted. The application exposes the catalog but does
 not support file uploads.
 
@@ -226,10 +255,11 @@ desktop and above the content on smaller screens. Its sections are:
 
 - **Interface:** shared Spanish/English language and system/reduced/full motion preferences.
 - **Keyboard:** capture on opening, fixed velocity from 1 to 127, and shortcut,
-  note, combined or hidden labels. Capture and preview toggles also update the
+  note, combined or hidden labels. The capture toggle also updates the
   shared configuration from Live.
-- **Audio:** stereo output device, 44.1/48 kHz sample rate and 256/512/1024-frame
-  buffer. Apply explicitly to rebuild the output and release active notes.
+- **Audio:** local simulation on/off, plus the server's stereo output device,
+  44.1/48 kHz sample rate and 256/512/1024-frame buffer. The simulation toggle
+  saves immediately without rebuilding native audio. Apply explicitly to rebuild the output and release active notes.
   Failed changes restore the previous engine and output configuration.
 - **MIDI:** automatic connection and linear/soft/hard velocity curves per
   controller, including devices reported by Web MIDI browsers. Preferences use
@@ -263,6 +293,15 @@ The installer generates a service for the current user and directory, installs
 reboot. Inspect it with `journalctl -u sontrama -f` and
 `systemctl status sontrama`.
 
+Before starting the service, the installer builds pinned FluidSynth for the
+target CPU and prepares the shared native kernel. The target therefore needs
+the build dependencies listed above, including Git, CMake and GLib headers.
+The first build needs Internet access; subsequent installations reuse artifacts.
+It preserves an existing `/etc/sontrama.env`. When manually updating an already
+running installation, finish with `sudo systemctl restart sontrama`;
+`enable --now` alone does not restart an active service. The workspace deployment
+script performs that restart automatically.
+
 The generic service profile uses port **8081**. From the same network, open
 `http://PI-IP:8081`. The service listens on the LAN according to its environment
 file; it is intended for a trusted network and has no authentication.
@@ -288,9 +327,14 @@ first start. Later, use the configuration UI to save changes.
 Paths under `/home/pi/sontrama` in templates are examples; the installer
 generates the generic service configuration for the current user and directory.
 
-Testing on a Pi 3 B running Debian arm64 covered virtual ALSA MIDI,
-16 simultaneous notes, modulation CC and effects with Banks and 3 Osc,
-while measuring audio underruns. Automatic startup was verified by rebooting.
+Validation on a Pi 3 B running Debian arm64 covered physical MIDI input and
+3.5 mm jack output, effects and browser preview. Automated hardware checks covered
+virtual ALSA MIDI, 16 simultaneous notes with all six effects in Banks and 3 Osc,
+and underrun monitoring. ARM/WASM comparisons covered the shared core and pinned
+Banks at 44.1 and 48 kHz. Browser checks against the Pi covered MIDI highlighting,
+immediate preview without echoed retriggers, and sustain during live edits.
+These checks do not guarantee glitch-free output under every workload; monitor
+underruns for the selected device and buffer. Systemd automatic startup and service restarts have also been checked on hardware.
 For browser tests against a running server, replace the example hostname:
 
 ```sh
@@ -313,26 +357,54 @@ Output (AudioOutput)
 `contracts.py` defines the Instrument, AudioEffect and AudioOutput contracts.
 `catalog.py` reads SF2 metadata independently of the synthesizer.
 `instruments.py` adapts FluidSynth; `effects.py` routes NumPy buffers through
-the stateful C kernel in `dsp/effects.c`; `three_osc.py` implements the three-oscillator instrument without
-FluidSynth; `runtime.py` coordinates MIDI, the mixer and PortAudio output.
+the stateful C kernel in `dsp/effects.c`; `three_osc.py` adapts the shared
+three-oscillator engine in `dsp/three_osc.c`. `dsp/mixer.c` implements the shared
+bus processing and output clipping. `runtime.py` coordinates MIDI, the mixer
+and PortAudio output.
 `app.py` exposes REST, WebSocket and static files.
 
-The TypeScript client selects an engine through the `VoiceEngine` contract:
-Banks uses FluidSynth WASM, while 3 Osc uses custom DSP. Both deliver dry audio
-to the same Web Audio effect chain and mixer, using session parameters.
-Effect ranges/defaults come from the shared `effect_specs.json` contract.
-The browser runs matching DSP in an AudioWorklet, or ScriptProcessor on HTTP
-without AudioWorklet support. Native C and JavaScript sample fixtures cover all
-six effects, filter modes, different block sizes and live edits. Instrument
-engines and sample rates remain independent, so whole-studio output can differ.
-A C compiler is required during installation/startup; the service installer
-precompiles both native kernels before enabling systemd. No compilation or
-buffer allocation happens inside the native effect processing loop.
+The TypeScript client selects an engine through the `VoiceEngine` contract.
+Banks uses pinned FluidSynth WASM; 3 Osc uses the shared C/WASM engine.
+Both feed one shared processing pipeline with taps after Channel and Master,
+followed by final output clipping. Gain/pan transitions use identical 10 ms
+smoothing in both targets; mute silences immediately. Effect parameter edits
+preserve state, while changing a bus topology rebuilds that bus's chain.
+Effect ranges/defaults come from `effect_specs.json`; the low-level ABI and
+pinned engine versions live in `dsp/core_contract.json`.
 
-To add an instrument, implement Instrument and register its adapter.
-To add an effect, define its shared parameter contract, extend EffectSpec's
-kind union, implement the C/JavaScript processor branches, add localized names
-and labels, and extend the audio/parity tests. The picker/editor use the contract. This version has two instruments and one channel; it does not
+`tests/test_shared_dsp.py` compares native/WASM instruments and complete chains
+at 44.1/48 kHz, including HQ, seeded noise, random phase, controller changes,
+sustain, voice stealing, live edits and different host block sizes.
+`tests/test_banks_parity.py` creates an original synthetic SF2 fixture and compares
+pinned native/WASM Banks renders. Browser tests cover immediate MIDI, delayed
+echoes, rejection, sample-rate changes and pedal preservation during edits.
+
+For an isolated ARM comparison without deploying or changing an audio service:
+
+```sh
+uv run --frozen python scripts/check-arm-parity.py user@synth-host /absolute/path/to/.venv/bin/python /tmp/sontrama-parity-check
+```
+
+The SSH target needs a C compiler and the locked runtime dependencies. The tool
+copies only source/test data into a new temporary directory, compares native
+renders against the production WASM adapter, and removes the directory afterward.
+
+Shared DSP avoids maintaining separate processing algorithms. Small floating-point
+differences between compiler targets remain subject to explicit parity tolerances.
+It does not synchronize hardware
+output clocks, recover all voices after reconnect, or restore old effect tails.
+Those require a separate musical-state/time protocol. AudioWorklet needs HTTPS
+or localhost. Configure `SONTRAMA_TLS_CERT` and `SONTRAMA_TLS_KEY` with trusted
+certificate paths for HTTPS on the LAN; the HTTP fallback remains available.
+A C compiler is needed during setup/startup, and the service installer prepares
+all native artifacts before starting audio. No build, file loading or network
+operation occurs in the audio callback.
+
+To add an instrument or effect, follow the shared-DSP
+[checklists in AGENTS.md](../AGENTS.md#adding-instruments-and-effects-without-dsp-divergence).
+Implement processing once, register both host adapters, update shared contracts
+and bindings, then rebuild and verify native/WASM parity. The effect picker and
+editor use the shared parameter contract. This version has two instruments and one channel; it does not
 include a sequencer, patches, pads, recording or MIDI file playback.
 
 ## Validation
@@ -341,6 +413,8 @@ Run only the checks relevant to the change. For example:
 
 ```sh
 uv run --frozen pytest tests/test_three_osc.py -q
+# For shared DSP, Banks or MIDI protocol changes, select the relevant cases:
+uv run --frozen pytest tests/test_shared_dsp.py tests/test_banks_parity.py tests/test_midi_preview.py -q
 uv run --frozen ruff check src tests
 npm run lint
 npm run format:check

@@ -1,4 +1,3 @@
-import base64
 import json
 import struct
 from pathlib import Path
@@ -489,28 +488,42 @@ def test_visualization_layout_persists_broadcasts_and_validates(studio):
             assert response.json()["settings"]["visualizations"]["active"] == "keyboard"
 
 
-def test_visualization_stream_requires_subscription_and_stops_after_disconnect(studio):
+def test_server_no_longer_streams_audio_windows(studio):
     with TestClient(create_app(studio, audio=False, midi=False)) as client:
         with client.websocket_connect("/ws") as socket:
-            receive_type(socket, "settings")
-            assert not studio.visualization_enabled
-            socket.send_json({"type": "visualization_subscribe", "enabled": "yes"})
-            assert receive_type(socket, "error")["code"] == "invalid_midi_message"
             socket.send_json({"type": "visualization_subscribe", "enabled": True})
-            frame = receive_type(socket, "visualization")
-            assert studio.visualization_enabled
-            assert frame["encoding"] == "float32-base64"
-            assert len(base64.b64decode(frame["master"][0])) == 1024 * 4
-            with client.websocket_connect("/ws") as second:
-                second.send_json({"type": "visualization_subscribe", "enabled": True})
-                receive_type(second, "visualization")
-                socket.send_json({"type": "visualization_subscribe", "enabled": False})
-                receive_type(socket, "meters")
-                assert studio.visualization_enabled
-        assert not studio.visualization_enabled
+            assert receive_type(socket, "error")["code"] == "invalid_midi_message"
+            assert "channel_stereo" in receive_type(socket, "meters")
 
 
-def test_spectral_ranges_are_validated_and_large_windows_are_negotiated(studio):
+def test_local_simulation_and_preview_output_are_shared_without_rebuilding_audio(studio):
+    with TestClient(create_app(studio, audio=False, midi=False)) as client:
+        original = client.get("/api/state").json()["session"]
+        settings = client.get("/api/settings").json()["settings"]
+        assert settings["browser_preview"] is True
+        assert settings["preview_volume"] == 1
+        assert settings["preview_muted"] is True
+        instrument = studio.instrument
+        with client.websocket_connect("/ws") as socket:
+            receive_type(socket, "settings")
+            updated = client.patch(
+                "/api/settings",
+                json={"browser_preview": False, "preview_volume": 0.37, "preview_muted": False},
+            )
+            assert updated.status_code == 200
+            shared = receive_type(socket, "settings")["settings"]
+            assert shared["preview_volume"] == 0.37
+            assert shared["preview_muted"] is False
+            assert shared["browser_preview"] is False
+        assert client.get("/api/state").json()["session"] == original
+        assert studio.instrument is instrument
+        saved = json.loads(studio.store.path.with_name("settings.json").read_text())
+        assert saved["preview_volume"] == 0.37
+        for volume in (-0.01, 1.01):
+            assert client.patch("/api/settings", json={"preview_volume": volume}).status_code == 422
+
+
+def test_spectral_ranges_are_validated(studio):
     with TestClient(create_app(studio, audio=False, midi=False)) as client:
         widget = {
             "id": "fft",
@@ -531,15 +544,22 @@ def test_spectral_ranges_are_validated_and_large_windows_are_negotiated(studio):
                 ).status_code
                 == 422
             )
-        with client.websocket_connect("/ws") as socket:
-            receive_type(socket, "settings")
-            socket.send_json(
-                {"type": "visualization_subscribe", "enabled": True, "window_size": 4096}
-            )
-            frame = receive_type(socket, "visualization")
-            assert len(base64.b64decode(frame["channel"][0])) == 4096 * 4
-            assert len(base64.b64decode(frame["pitch"]["channel"])) == 1024 * 4
-            socket.send_json(
-                {"type": "visualization_subscribe", "enabled": True, "window_size": 8192}
-            )
-            assert receive_type(socket, "error")["code"] == "invalid_midi_message"
+
+
+@pytest.mark.parametrize("previous_preview", [False, True])
+def test_old_preview_preferences_migrate_to_silent_simulation_once(studio, previous_preview):
+    old = ConfigurationService(studio).settings.model_dump(
+        exclude={"preview_volume", "preview_muted"}
+    )
+    old["browser_preview"] = previous_preview
+    old["interface"]["language"] = "es"
+    path = studio.store.path.with_name("settings.json")
+    path.write_text(json.dumps(old))
+    with TestClient(create_app(studio, audio=False, midi=False)) as client:
+        settings = client.get("/api/settings").json()["settings"]
+        assert settings["browser_preview"] is True
+        assert settings["preview_muted"] is True
+        assert settings["preview_volume"] == 1
+        assert settings["interface"]["language"] == "es"
+        assert client.patch("/api/settings", json={"browser_preview": False}).status_code == 200
+    assert ConfigurationService(studio).settings.browser_preview is False

@@ -1,20 +1,5 @@
-// Render the browser DSP without audio hardware for native/browser parity checks.
-import { readFile } from "node:fs/promises";
-import { runInNewContext } from "node:vm";
-import ts from "typescript";
-
-const source = await readFile(
-  new URL("../web/src/effects-dsp.ts", import.meta.url),
-  "utf8",
-);
-const { outputText } = ts.transpileModule(source, {
-  compilerOptions: {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.CommonJS,
-  },
-});
-const exports = {};
-runInNewContext(outputText, { exports });
+// Render the production WASM effect adapter for native/WASM parity checks.
+import { loadDSP } from "./load-dsp.mjs";
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 const {
@@ -25,7 +10,10 @@ const {
   chunks = [256],
   updates = [],
 } = JSON.parse(input);
-const dsp = new exports.EffectDSP(kind, rate, parameters);
+const { module, WasmCore, WasmEffect } = await loadDSP();
+const core = new WasmCore(module),
+  dsp = new WasmEffect(core, rate, kind, parameters);
+const pointer = core.allocate(4096 * 2 * 4);
 const output = [];
 let offset = 0,
   iteration = 0;
@@ -36,11 +24,16 @@ while (offset < samples.length) {
     offset,
     offset + chunks[iteration++ % chunks.length],
   );
-  const left = Float32Array.from(block, (frame) => frame[0]);
-  const right = Float32Array.from(block, (frame) => frame[1]);
-  dsp.process(left, right);
-  for (let index = 0; index < block.length; index++)
-    output.push([left[index], right[index]]);
+  const data = core.floats(pointer, block.length * 2);
+  for (let i = 0; i < block.length; i++) {
+    data[i * 2] = block[i][0];
+    data[i * 2 + 1] = block[i][1];
+  }
+  dsp.process(pointer, block.length);
+  for (let i = 0; i < block.length; i++)
+    output.push([data[i * 2], data[i * 2 + 1]]);
   offset += block.length;
 }
+dsp.close();
+core.api.free(pointer);
 process.stdout.write(JSON.stringify(output));

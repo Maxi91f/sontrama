@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, setSimulation } from "./fixtures";
 const kinds = [
   "spectrogram",
   "vectorscope",
@@ -55,9 +55,7 @@ test("new views render real preview audio and MIDI, share pause and persist VU d
     .click();
   await expect(page.locator(".visual-widget")).toHaveCount(6);
   await page.getByRole("tab", { name: "Output", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Enable preview", exact: true })
-    .click();
+  await setSimulation(page, true);
   await page.getByRole("tab", { name: "Visualizations", exact: true }).click();
   await page.evaluate(async () => {
     const socket = new WebSocket(`ws://${location.host}/ws`);

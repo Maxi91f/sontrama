@@ -1,6 +1,6 @@
-import { test, expect } from "./fixtures";
+import { test, expect, setSimulation } from "./fixtures";
 
-test("spectral settings persist, sync and use real 4096-sample server and preview windows", async ({
+test("spectral settings persist, sync and use real 4096-sample local windows", async ({
   page,
   browser,
   request,
@@ -37,6 +37,8 @@ test("spectral settings persist, sync and use real 4096-sample server and previe
     };
   });
   await page.goto("/");
+  await setSimulation(page);
+  await page.waitForFunction(() => (window as any).sontrama.audio.ready);
   await page.getByRole("tab", { name: "Visualizations", exact: true }).click();
   const spectrum = page.locator(
     '.visual-widget[data-widget="spectrum-settings"]',
@@ -53,7 +55,7 @@ test("spectral settings persist, sync and use real 4096-sample server and previe
   );
   expect(
     await page.evaluate(() => (window as any).analysisWindows.includes(4096)),
-  ).toBe(true);
+  ).toBe(false);
   await expect(spectrum.locator("[data-analysis-info]")).toContainText("4096");
   await spectrum
     .getByLabel("Window function", { exact: true })
@@ -118,12 +120,8 @@ test("spectral settings persist, sync and use real 4096-sample server and previe
       ),
     ).toBe(true);
     await page.getByRole("tab", { name: "Output", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Enable preview", exact: true })
-      .click();
-    await expect(
-      page.getByRole("button", { name: "Preview enabled", exact: true }),
-    ).toBeVisible();
+    await setSimulation(page, true);
+    await page.waitForFunction(() => (window as any).sontrama.audio.ready);
 
     await page
       .getByRole("tab", { name: "Visualizations", exact: true })

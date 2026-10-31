@@ -12,10 +12,17 @@ const external = new URL(
   import.meta.url,
 );
 const names = await readdir(external);
-const engine = names
-  .filter((name) => /^libfluidsynth-[\d.]+\.js$/.test(name))
-  .sort()
-  .at(-1);
+const contract = JSON.parse(
+  await (
+    await import("node:fs/promises")
+  ).readFile(
+    new URL("../src/sontrama/dsp/core_contract.json", import.meta.url),
+    "utf8",
+  ),
+);
+const engine = names.find(
+  (name) => name === `libfluidsynth-${contract.fluidsynth}.js`,
+);
 if (!engine) throw new Error("Missing FluidSynth WASM distribution");
 await copyFile(
   new URL(engine, external),

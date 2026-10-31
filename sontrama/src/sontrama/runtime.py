@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import logging
 import os
 import threading
@@ -12,11 +11,13 @@ import sounddevice as sd
 from .catalog import BankCatalog
 from .configuration import midi_device_id, resolve_audio_device
 from .contracts import AudioOutput, ConfigurableInstrument, Instrument, MidiSource
-from .effects import EffectChain, StereoPanner
+from .effects import EffectChain
 from .errors import ApplicationError, Diagnostic, error_detail
+from .fluid_library import fluid_version
 from .instruments import instrument_factory as default_instrument_factory
 from .midi import RtMidiSource
 from .models import Session, StateStore
+from .native_core import NativeBus, clip, core_revision
 
 log = logging.getLogger(__name__)
 
@@ -111,6 +112,7 @@ class Studio:
         self.sample_rate = sample_rate
         self.lock = threading.RLock()
         self.control_lock = threading.Lock()
+        self.midi_context = threading.local()
         self.state = store.load()
         self.custom_instrument_factory = instrument_factory
         self.instrument_factory = instrument_factory or default_instrument_factory(
@@ -122,16 +124,16 @@ class Studio:
         self.output: AudioOutput | None = None
         self.chain = EffectChain(self.state.effects, sample_rate)
         self.master_chain = EffectChain(self.state.master_effects, sample_rate)
-        self.panner = StereoPanner(self.state.pan)
-        self.master_panner = StereoPanner(self.state.master_pan)
+        self.panner = NativeBus(sample_rate, self.state.volume, self.state.pan, self.state.mute)
+        self.master_panner = NativeBus(
+            sample_rate, self.state.master, self.state.master_pan, self.state.master_mute
+        )
         self.router = MidiRouter(self._dispatch)
         self.emit: Callable[[dict], None] = lambda event: None
         self.status = {"engine": "stopped", "audio": "stopped", "midi": [], "errors": []}
         self.levels = [0.0, 0.0]
         self.stereo_levels = [[0.0, 0.0], [0.0, 0.0]]
         self.meter_peaks = [[0.0, 0.0], [0.0, 0.0]]
-        self.visualization_enabled = False
-        self.visualization_samples = np.zeros((2, 4096, 2), dtype=np.float32)
         self.underruns = 0
         self.midi_source: MidiSource | None = None
         self.pending_banks: dict[tuple[str, int], int] = {}
@@ -148,8 +150,12 @@ class Studio:
         )
         self.chain = EffectChain(self.state.effects, self.sample_rate)
         self.master_chain = EffectChain(self.state.master_effects, self.sample_rate)
-        self.panner = StereoPanner(self.state.pan)
-        self.master_panner = StereoPanner(self.state.master_pan)
+        self.panner = NativeBus(
+            self.sample_rate, self.state.volume, self.state.pan, self.state.mute
+        )
+        self.master_panner = NativeBus(
+            self.sample_rate, self.state.master, self.state.master_pan, self.state.master_mute
+        )
 
     def start(self, audio=True, midi=True, device: str | None = None, block_size=256):
         self.audio_enabled = audio
@@ -233,6 +239,11 @@ class Studio:
                     "dsp": getattr(self.instrument, "backend", "fluidsynth"),
                     "audio_latency": getattr(self.output, "latency", None),
                     "catalog_revision": self.catalog_revision,
+                    "engine_contract": {
+                        "core_revision": core_revision(),
+                        "sample_rate": self.sample_rate,
+                        "fluidsynth_version": fluid_version(),
+                    },
                 },
             }
 
@@ -269,7 +280,6 @@ class Studio:
                 if reset or not current_master_chain.matches(candidate.master_effects)
                 else current_master_chain
             )
-            panner, master_panner = StereoPanner(candidate.pan), StereoPanner(candidate.master_pan)
             config_changed = (
                 candidate.three_osc != previous.three_osc and candidate.instrument == "three-osc"
             )
@@ -313,7 +323,10 @@ class Studio:
                 ):
                     new_master_chain.configure(candidate.master_effects)
                 self.chain, self.master_chain = new_chain, new_master_chain
-                self.panner, self.master_panner = panner, master_panner
+                self.panner.configure(candidate.volume, candidate.pan, candidate.mute)
+                self.master_panner.configure(
+                    candidate.master, candidate.master_pan, candidate.master_mute
+                )
                 self.state = candidate
             if old:
                 old.close()
@@ -330,6 +343,7 @@ class Studio:
             old_catalog, old_rate = self.catalog, self.sample_rate
             old_factory, old_chain = self.instrument_factory, self.chain
             old_master_chain = self.master_chain
+            old_panner, old_master_panner = self.panner, self.master_panner
             old_state, old_instrument = self.state, self.instrument
             old_device, old_block = self.device, self.block_size
             old_output = self.output
@@ -363,6 +377,12 @@ class Studio:
                 replacement.midi([0xB0, 64, 127 if next_state.sustain else 0])
             chain = EffectChain(next_state.effects, audio.sample_rate)
             master_chain = EffectChain(next_state.master_effects, audio.sample_rate)
+            panner = NativeBus(
+                audio.sample_rate, next_state.volume, next_state.pan, next_state.mute
+            )
+            master_panner = NativeBus(
+                audio.sample_rate, next_state.master, next_state.master_pan, next_state.master_mute
+            )
             new_output = None
             swapped = False
             state_saved = False
@@ -383,6 +403,7 @@ class Studio:
                     self.master_chain = master_chain
                     self.state, self.instrument = next_state, replacement
                     self.device, self.block_size = audio.device, audio.block_size
+                    self.panner, self.master_panner = panner, master_panner
                     self.router.reset()
                     self.levels = [0.0, 0.0]
                     self.stereo_levels = [[0.0, 0.0], [0.0, 0.0]]
@@ -413,6 +434,7 @@ class Studio:
                         self.master_chain = old_master_chain
                         self.state, self.instrument = old_state, old_instrument
                         self.device, self.block_size = old_device, old_block
+                        self.panner, self.master_panner = old_panner, old_master_panner
                         self.router.reset()
                         if old_instrument:
                             old_instrument.panic()
@@ -465,7 +487,12 @@ class Studio:
     def _dispatch(self, data: list[int]):
         if self.instrument and self.state.output == "device":
             self.instrument.midi(data)
-        self.emit({"type": "midi", "data": data, "output": self.state.output})
+        event = {"type": "midi", "data": data, "output": self.state.output}
+        event.update(getattr(self.midi_context, "metadata", {}))
+        routed = getattr(self.midi_context, "routed", None)
+        if routed is not None:
+            routed.append(list(data))
+        self.emit(event)
 
     def controller_enabled(self, identifier: str):
         profile = self.controller_settings.get(identifier)
@@ -478,7 +505,31 @@ class Studio:
                 if not self.controller_enabled(identifier):
                     self.release_source(source)
 
-    def midi(self, data: list[int], source: str, hardware=False, controller: str | None = None):
+    def midi(
+        self,
+        data: list[int],
+        source: str,
+        hardware=False,
+        controller: str | None = None,
+        event_id: str | None = None,
+    ):
+        previous = getattr(self.midi_context, "metadata", {})
+        previous_routed = getattr(self.midi_context, "routed", None)
+        routed = []
+        self.midi_context.metadata = {"origin": source}
+        if event_id is not None:
+            self.midi_context.metadata["event_id"] = event_id
+        self.midi_context.routed = routed
+        try:
+            self._route_midi(data, source, hardware, controller)
+            return routed
+        finally:
+            self.midi_context.metadata = previous
+            self.midi_context.routed = previous_routed
+
+    def _route_midi(
+        self, data: list[int], source: str, hardware=False, controller: str | None = None
+    ):
         with self.lock:
             identifier = (
                 midi_device_id(source)
@@ -556,15 +607,9 @@ class Studio:
             block = self.instrument.render(frames)
             block = self.chain.process(block)
             block = self.panner.process(block)
-            block *= 0 if self.state.mute else self.state.volume
-            if self.visualization_enabled:
-                self._capture_visualization(0, block)
             channel_levels = np.max(np.abs(block), axis=0).tolist()
             block = self.master_chain.process(block)
             block = self.master_panner.process(block)
-            block *= 0 if self.state.master_mute else self.state.master
-            if self.visualization_enabled:
-                self._capture_visualization(1, block)
             master_levels = np.max(np.abs(block), axis=0).tolist()
             self.stereo_levels = [
                 [min(1, value) for value in levels] for levels in (channel_levels, master_levels)
@@ -573,58 +618,7 @@ class Studio:
             for bus, levels in enumerate((channel_levels, master_levels)):
                 for side, value in enumerate(levels):
                     self.meter_peaks[bus][side] = max(self.meter_peaks[bus][side], value)
-            return np.clip(block, -1, 1)
-
-    def _capture_visualization(self, bus, block):
-        """Keep a bounded window; network serialization happens outside the callback."""
-        window = self.visualization_samples[bus]
-        count = min(len(block), len(window))
-        if count < len(window):
-            window[:-count] = window[count:]
-        window[-count:] = block[-count:]
-
-    def enable_visualization(self, enabled):
-        with self.lock:
-            if enabled != self.visualization_enabled:
-                self.visualization_samples.fill(0)
-            self.visualization_enabled = enabled
-
-    def read_visualization(self, window_size=1024, *, packed=False):
-        with self.lock:
-            samples = self.visualization_samples.copy()
-            rate = self.sample_rate
-            silent = not self.instrument or self.state.output != "device"
-        if silent:
-            samples.fill(0)
-        pitch = []
-        for bus in samples:
-            channel = int(np.argmax(np.sum(bus * bus, axis=0)))
-            values = bus[:, channel].reshape(1024, 4).mean(axis=1)
-            pitch.append(values if packed else values.astype(float).round(5).tolist())
-        if packed:
-            # Float arrays avoid expensive per-sample JSON float formatting on the Pi.
-            def encode(values):
-                return base64.b64encode(np.asarray(values, dtype="<f4").tobytes()).decode("ascii")
-
-            return {
-                "type": "visualization",
-                "encoding": "float32-base64",
-                "sample_rate": rate,
-                "channel": [encode(side) for side in samples[0, -window_size:].T],
-                "master": [encode(side) for side in samples[1, -window_size:].T],
-                "pitch": {
-                    "sample_rate": rate / 4,
-                    "channel": encode(pitch[0]),
-                    "master": encode(pitch[1]),
-                },
-            }
-        return {
-            "type": "visualization",
-            "sample_rate": rate,
-            "channel": samples[0, -window_size:].T.astype(float).round(8).tolist(),
-            "master": samples[1, -window_size:].T.astype(float).round(8).tolist(),
-            "pitch": {"sample_rate": rate / 4, "channel": pitch[0], "master": pitch[1]},
-        }
+            return clip(block)
 
     def read_meters(self):
         """Consume interval peaks so short transients survive slower UI publishing."""

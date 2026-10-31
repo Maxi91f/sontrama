@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && node scripts/vendor.mjs && vite build",
+    "dev": "node scripts/build-dsp.mjs && vite --host 127.0.0.1",
+    "build": "node scripts/build-dsp.mjs && tsc --noEmit && node scripts/vendor.mjs && vite build",
     "check": "tsc --noEmit",
     "lint": "eslint web/src tests/browser scripts *.ts *.mjs --max-warnings 0",
     "lint:fix": "npm run lint -- --fix",

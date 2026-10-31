@@ -2,41 +2,73 @@ import type { Session } from "./types";
 import type { VoiceEngine } from "./voice-engine";
 import { createBanksEngine } from "./banks-engine";
 import { createThreeOscEngine } from "./three-osc-engine";
-
-import { makeEffect, prepareEffects, type EffectNode } from "./effects";
-
+import { createPipeline, prepareEffects, type PipelineNode } from "./effects";
+import { prepareDSP } from "./dsp-loader";
+import { LocalizedError } from "./i18n";
+import contract from "../../src/sontrama/dsp/core_contract.json";
+export interface EngineContract {
+  core_revision: string;
+  sample_rate: number;
+  fluidsynth_version: string | null;
+}
 export class BrowserInstrument {
   context: AudioContext | null = null;
   private engine: VoiceEngine | null = null;
   private kind: Session["instrument"] | null = null;
+  private pipeline: PipelineNode | null = null;
+  private monitor: GainNode | null = null;
+  private monitorVolume = 1;
+  private monitorMuted = true;
   private pending: Promise<void> = Promise.resolve();
-  private source: AudioNode | null = null;
-  private effects: EffectNode[] = [];
-  private masterEffects: EffectNode[] = [];
-  private channelPan: StereoPannerNode | null = null;
-  private masterPan: StereoPannerNode | null = null;
+  private generation = 0;
+  private state: Session | null = null;
+  private requestedState: Session | null = null;
+  private loading = false;
+  private queuedMidi: { data: number[]; transpose: boolean }[] = [];
+  private server: EngineContract | null = null;
+  private activeNotes = new Map<number, number>();
   channelStereo: AnalyserNode[] = [];
   masterStereo: AnalyserNode[] = [];
   channelPitch: AnalyserNode[] = [];
   masterPitch: AnalyserNode[] = [];
-  private channel: GainNode | null = null;
-  private master: GainNode | null = null;
-  private limiter: WaveShaperNode | null = null;
   channelMeter: AnalyserNode | null = null;
   masterMeter: AnalyserNode | null = null;
-  private effectSignature = "";
-  private masterEffectSignature = "";
-  private generation = 0;
-  private state: Session | null = null;
-  private activeNotes = new Map<number, number>();
-
   get ready() {
     return (
       this.kind === this.state?.instrument && (this.engine?.ready ?? false)
     );
   }
-
+  setServerEngine(server: EngineContract | undefined) {
+    this.server = server ?? null;
+  }
+  private async compatible(state: Session) {
+    const prepared = await prepareDSP();
+    if (this.server && this.server.core_revision !== prepared.revision)
+      throw new LocalizedError("errors.previewCoreMismatch");
+    if (
+      state.instrument === "banks" &&
+      this.server &&
+      this.server.fluidsynth_version !== contract.fluidsynth
+    )
+      throw new LocalizedError("errors.previewBanksMismatch", {
+        expected: contract.fluidsynth,
+        actual: this.server.fluidsynth_version ?? "—",
+      });
+  }
   async start(state: Session, automatic = false) {
+    this.loading = true;
+    this.requestedState = state;
+    try {
+      await this.startPrepared(state, automatic);
+    } catch (error) {
+      await this.stop();
+      throw error;
+    } finally {
+      this.loading = false;
+    }
+  }
+  private async startPrepared(state: Session, automatic = false) {
+    await this.compatible(state);
     if (this.context) {
       const resumed = this.context.resume();
       if (automatic) void resumed.catch(() => {});
@@ -46,74 +78,80 @@ export class BrowserInstrument {
     }
     const context = (this.context = new AudioContext({
       latencyHint: "interactive",
+      sampleRate: this.server?.sample_rate ?? 44100,
     }));
     try {
       const resumed = context.resume();
       if (automatic) void resumed.catch(() => {});
       else await resumed;
       await prepareEffects(context);
-      this.channel = context.createGain();
-      this.channelPan = context.createStereoPanner();
-      this.masterPan = context.createStereoPanner();
-      this.channelPan.connect(this.channel);
-      this.master = context.createGain();
-      this.channelMeter = context.createAnalyser();
-      this.masterMeter = context.createAnalyser();
-      this.channelMeter.fftSize = 256;
-      this.masterMeter.fftSize = 256;
-      this.limiter = context.createWaveShaper();
-      const curve = new Float32Array(65537);
-      for (let i = 0; i < curve.length; i++)
-        curve[i] = Math.max(-1, Math.min(1, ((i / 65536) * 2 - 1) * 4));
-      // Scale into the curve's input domain, then hard-limit at +/-1 like the native output.
-      const pre = context.createGain();
-      pre.gain.value = 0.25;
-      this.limiter.curve = curve;
-      this.channel.connect(this.channelMeter);
-      this.masterPan.connect(this.master);
-      const stereoMeters = (node: AudioNode, fftSize = 2048) => {
+      this.pipeline = await createPipeline(context, state);
+      this.monitor = context.createGain();
+      this.monitor.gain.value = this.monitorMuted ? 0 : this.monitorVolume;
+      this.pipeline.output.connect(this.monitor);
+      this.monitor.connect(context.destination);
+      const stereo = (node: AudioNode, size: number) => {
         const splitter = context.createChannelSplitter(2);
         node.connect(splitter);
         return [0, 1].map((channel) => {
           const analyser = context.createAnalyser();
-          analyser.fftSize = fftSize;
+          analyser.fftSize = size;
           splitter.connect(analyser, channel);
           return analyser;
         });
       };
-      this.channelStereo = stereoMeters(this.channel);
-      this.masterStereo = stereoMeters(this.master);
-      this.channelPitch = stereoMeters(this.channel, 4096);
-      this.masterPitch = stereoMeters(this.master, 4096);
-      this.master
-        .connect(this.masterMeter)
-        .connect(pre)
-        .connect(this.limiter)
-        .connect(context.destination);
-      await this.apply(state);
+      this.channelStereo = stereo(this.pipeline.channel, 2048);
+      this.masterStereo = stereo(this.pipeline.master, 2048);
+      this.channelPitch = stereo(this.pipeline.channel, 4096);
+      this.masterPitch = stereo(this.pipeline.master, 4096);
+      this.channelMeter = context.createAnalyser();
+      this.masterMeter = context.createAnalyser();
+      this.channelMeter.fftSize = this.masterMeter.fftSize = 256;
+      this.pipeline.channel.connect(this.channelMeter);
+      this.pipeline.master.connect(this.masterMeter);
+      await this.apply(this.requestedState ?? state);
     } catch (error) {
       await this.stop();
       throw error;
     }
   }
-
   apply(state: Session, reload = false): Promise<void> {
+    this.requestedState = state;
+    if (
+      this.context &&
+      this.server &&
+      this.context.sampleRate !== this.server.sample_rate
+    ) {
+      const pending = this.pending;
+      return (async () => {
+        await this.stop();
+        await pending.catch(() => {});
+        await this.start(this.requestedState ?? state);
+      })();
+    }
+    if (!this.pipeline) return Promise.resolve();
     const generation = this.generation;
     const next = this.pending
       .catch(() => {})
       .then(async () => {
         if (generation !== this.generation || !this.context) return;
+        try {
+          await this.compatible(state);
+        } catch (error) {
+          this.panic();
+          this.kind = null;
+          throw error;
+        }
+        if (generation !== this.generation || !this.context) return;
         this.state = state;
-        if (reload || !this.engine || this.kind !== state.instrument) {
+        const replaced =
+          reload || !this.engine || this.kind !== state.instrument;
+        if (replaced) {
           const factories = {
             banks: createBanksEngine,
             "three-osc": createThreeOscEngine,
           };
           const engine = await factories[state.instrument](this.context, state);
-          if (generation !== this.generation) {
-            engine.close();
-            return;
-          }
           try {
             await engine.configure(state);
           } catch (error) {
@@ -127,59 +165,26 @@ export class BrowserInstrument {
           this.engine?.close();
           this.engine = engine;
           this.kind = state.instrument;
-          this.source = engine.node;
-          this.effectSignature = "";
-          this.masterEffectSignature = "";
-        } else await this.engine.configure(state);
-        if (generation !== this.generation || !this.context) return;
-        if (
-          JSON.stringify(
-            state.effects.map(({ id, kind, enabled }) => [id, kind, enabled]),
-          ) !== this.effectSignature ||
-          JSON.stringify(
-            state.master_effects.map(({ id, kind, enabled }) => [
-              id,
-              kind,
-              enabled,
-            ]),
-          ) !== this.masterEffectSignature
-        )
-          this.resetEffects(false);
-        this.effects.forEach((effect, index) =>
-          effect.configure(state.effects.filter((spec) => spec.enabled)[index]),
-        );
-        this.masterEffects.forEach((effect, index) =>
-          effect.configure(
-            state.master_effects.filter((spec) => spec.enabled)[index],
-          ),
-        );
-        this.channelPan!.pan.setTargetAtTime(
-          state.pan,
-          this.context.currentTime,
-          0.01,
-        );
-        this.masterPan!.pan.setTargetAtTime(
-          state.master_pan,
-          this.context.currentTime,
-          0.01,
-        );
-        this.channel!.gain.setTargetAtTime(
-          state.mute ? 0 : state.volume,
-          this.context.currentTime,
-          0.01,
-        );
-        this.master!.gain.setTargetAtTime(
-          state.master_mute ? 0 : state.master,
-          this.context.currentTime,
-          0.01,
-        );
+          engine.node.connect(this.pipeline!.input);
+        } else await this.engine!.configure(state);
+        if (generation !== this.generation) return;
+        this.pipeline!.configure(state, replaced);
+        for (const item of this.queuedMidi.splice(0))
+          this.midi(item.data, item.transpose);
       });
     this.pending = next;
     return next;
   }
-
   midi(data: number[], transpose = true) {
-    if (!this.ready || !this.engine) return;
+    if (!this.ready || !this.engine) {
+      if (this.loading || this.context) {
+        if (this.queuedMidi.length >= 256) {
+          this.queuedMidi = [];
+          this.engine?.panic();
+        } else this.queuedMidi.push({ data: [...data], transpose });
+      }
+      return;
+    }
     const routed = [...data],
       kind = data[0] & 0xf0;
     if (transpose && (kind === 0x80 || kind === 0x90)) {
@@ -195,78 +200,43 @@ export class BrowserInstrument {
     }
     this.engine.midi(routed);
   }
-
-  private resetEffects(force = true) {
-    if (!this.source || !this.context || !this.channel || !this.state) return;
-    const channelSignature = JSON.stringify(
-      this.state.effects.map(({ id, kind, enabled }) => [id, kind, enabled]),
-    );
-    const masterSignature = JSON.stringify(
-      this.state.master_effects.map(({ id, kind, enabled }) => [
-        id,
-        kind,
-        enabled,
-      ]),
-    );
-    // Rebuilding one bus must not cut the other bus's reverb or delay tails.
-    if (force || channelSignature !== this.effectSignature) {
-      this.source.disconnect();
-      this.effects.forEach((effect) => effect.close());
-      this.effects = this.state.effects
-        .filter((effect) => effect.enabled)
-        .map((effect) => makeEffect(this.context!, effect));
-      let tail = this.source;
-      for (const effect of this.effects) {
-        tail.connect(effect.input);
-        tail = effect.output;
-      }
-      tail.connect(this.channelPan!);
-      this.effectSignature = channelSignature;
-    }
-    if (force || masterSignature !== this.masterEffectSignature) {
-      this.channelMeter!.disconnect();
-      this.masterEffects.forEach((effect) => effect.close());
-      this.masterEffects = this.state.master_effects
-        .filter((effect) => effect.enabled)
-        .map((effect) => makeEffect(this.context!, effect));
-      let tail: AudioNode = this.channelMeter!;
-      for (const effect of this.masterEffects) {
-        tail.connect(effect.input);
-        tail = effect.output;
-      }
-      tail.connect(this.masterPan!);
-      this.masterEffectSignature = masterSignature;
+  setPreviewOutput(volume: number, muted: boolean) {
+    this.monitorVolume = Math.max(0, Math.min(1, volume));
+    this.monitorMuted = muted;
+    if (this.monitor && this.context) {
+      const gain = this.monitor.gain;
+      gain.cancelScheduledValues(this.context.currentTime);
+      gain.setTargetAtTime(
+        muted ? 0 : this.monitorVolume,
+        this.context.currentTime,
+        0.005,
+      );
     }
   }
-
   panic(resetEffects = true) {
+    this.queuedMidi = [];
     this.engine?.panic();
     this.activeNotes.clear();
     this.engine?.midi([0xb0, 64, this.state?.sustain ? 127 : 0]);
-    if (resetEffects) this.resetEffects();
+    if (resetEffects && this.state) this.pipeline?.configure(this.state, true);
   }
-
   async stop() {
+    this.loading = false;
     this.generation++;
     this.panic(false);
-    this.effects.forEach((effect) => effect.close());
-    this.masterEffects.forEach((effect) => effect.close());
-    this.effects = [];
-    this.masterEffects = [];
+    this.engine?.close();
+    this.engine = null;
+    this.kind = null;
+    this.pipeline?.close();
+    this.pipeline = null;
+    this.monitor?.disconnect();
+    this.monitor = null;
     this.channelStereo = [];
     this.masterStereo = [];
     this.channelPitch = [];
     this.masterPitch = [];
-    this.channelMeter = null;
-    this.masterMeter = null;
-    this.source?.disconnect();
-    this.engine?.close();
-    this.engine = null;
-    this.kind = null;
-    this.source = null;
+    this.channelMeter = this.masterMeter = null;
     await this.context?.close();
     this.context = null;
-    this.effectSignature = "";
-    this.masterEffectSignature = "";
   }
 }

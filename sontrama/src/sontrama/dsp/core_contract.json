@@ -1,0 +1,27 @@
+{
+  "abi": 1,
+  "emscripten": "4.0.23",
+  "fluidsynth": "2.4.6",
+  "seed": 1,
+  "shapes": ["sine", "triangle", "square", "saw", "rounded-saw", "noise"],
+  "oscillator_fields": [
+    "enabled",
+    "shape",
+    "coarse",
+    "fine",
+    "pan",
+    "phase",
+    "detune",
+    "phase_start",
+    "mix"
+  ],
+  "patch_fields": [
+    "attack",
+    "decay",
+    "sustain",
+    "release",
+    "am_osc3",
+    "phase_random",
+    "hq"
+  ]
+}

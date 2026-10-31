@@ -62,6 +62,12 @@ try {
     deviceScaleFactor: 1,
     reducedMotion: "reduce",
   });
+  const setSimulation = async (browser_preview) => {
+    await page.request.patch(`${baseURL}/api/settings`, {
+      data: { browser_preview },
+    });
+    await page.mouse.click(1, 1);
+  };
   await page.goto(baseURL);
   await page.locator("#connection.connected").waitFor();
   await page.evaluate(() => document.fonts.ready);
@@ -145,12 +151,8 @@ try {
   });
 
   await page.getByRole("tab", { name: "Output", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Enable preview", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Preview enabled", exact: true })
-    .waitFor();
+  await setSimulation(true);
+  await page.waitForFunction(() => window.sontrama.audio.ready);
   await page.getByRole("tab", { name: "Mixer", exact: true }).click();
   await page.getByRole("button", { name: "Edit Master", exact: true }).click();
   for (const name of ["Compressor", "Limiter"]) {
@@ -212,12 +214,8 @@ try {
     .getByRole("button", { name: "Edit Channel 01", exact: true })
     .click();
   await page.getByRole("tab", { name: "Output", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Preview enabled", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Enable preview", exact: true })
-    .waitFor();
+  await setSimulation(false);
+  await page.waitForFunction(() => !window.sontrama.audio.ready);
   await page.getByRole("tab", { name: "Mixer", exact: true }).click();
   await setDrawer(true);
   await waitForToast();
@@ -293,12 +291,8 @@ try {
   });
   if (!response.ok) throw new Error("Unable to configure visualizations");
   await page.getByRole("tab", { name: "Output", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Enable preview", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Preview enabled", exact: true })
-    .waitFor();
+  await setSimulation(true);
+  await page.waitForFunction(() => window.sontrama.audio.ready);
   await page.getByRole("tab", { name: "Visualizations", exact: true }).click();
   await page.locator('.visual-widget[data-widget="demo-vu"]').waitFor();
   for (const notes of progression) {
